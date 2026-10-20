@@ -1,0 +1,2 @@
+405662cb3023da2d6cdd7d5d8ef62457e624d654489da8fb729a8a3141bed515  InventorySearchPrototype.dll
+b3e6bf7c904b4d81d8c40d832dd85d0e34e63d381b1096fd65f2fae2ee698390  InventorySearch-OneClick-v0.1.6-beta.zip
