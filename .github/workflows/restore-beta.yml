@@ -27,6 +27,11 @@ jobs:
           git archive "$beta_commit" installer/ | tar -x -C "$stage"
           mv "$stage/installer" "$stage/InventorySearch-OneClick-v0.1.6-beta"
           target="$stage/InventorySearch-OneClick-v0.1.6-beta"
+          # The v0.1.6 DLL and installer remain unchanged; bundle the
+          # Windows-tested updater fix so a fresh v0.1.6 install can
+          # discover and apply v1.0.0 without using the v1 installer.
+          cp installer/Update.ps1 "$target/Update.ps1"
+          cp installer/UPDATE-NOW.cmd "$target/UPDATE-NOW.cmd"
           mkdir -p "$target/payload"
           echo '405662cb3023da2d6cdd7d5d8ef62457e624d654489da8fb729a8a3141bed515  dist/InventorySearchPrototype.dll' | sha256sum -c -
           cp dist/InventorySearchPrototype.dll "$target/payload/InventorySearchPrototype.dll"
@@ -38,6 +43,8 @@ jobs:
           (cd release-assets && sha256sum InventorySearchPrototype.dll InventorySearch-OneClick-v0.1.6-beta.zip > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
           unzip -p release-assets/InventorySearch-OneClick-v0.1.6-beta.zip InventorySearch-OneClick-v0.1.6-beta/Install.ps1 | grep -q '405662CB3023DA2D6CDD7D5D8EF62457E624D654489DA8FB729A8A3141BED515'
           unzip -p release-assets/InventorySearch-OneClick-v0.1.6-beta.zip InventorySearch-OneClick-v0.1.6-beta/CONFIG.json | grep -q '0.1.6'
+          unzip -p release-assets/InventorySearch-OneClick-v0.1.6-beta.zip InventorySearch-OneClick-v0.1.6-beta/Update.ps1 | grep -q 'Add-InventorySearchRelease'
+          unzip -p release-assets/InventorySearch-OneClick-v0.1.6-beta.zip InventorySearch-OneClick-v0.1.6-beta/UPDATE-NOW.cmd | grep -q 'Refreshing installed updater script'
       - name: Restore v0.1.6 release assets
         env:
           GH_TOKEN: ${{ github.token }}
