@@ -29,20 +29,49 @@ $target = Join-Path $gameDir 'BepInEx\plugins\InventorySearchPrototype\Inventory
 if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
     throw 'Inventory Search DLL is missing. Re-run installer to reinstall before updating.'
 }
-# GitHub published releases API supports pre-releases; the /latest endpoint excludes them.
+# GitHub publishes both stable releases and beta pre-releases through this endpoint.
+# In Windows PowerShell 5.1, Invoke-RestMethod can return a JSON array as one
+# nested [object[]] pipeline result. Never wrap it blindly in @(...).
 $headers = @{ 'User-Agent'='InventorySearch-Updater'; 'Accept'='application/vnd.github+json' }
-$releases = @(Invoke-RestMethod -Uri ("https://api.github.com/repos/" + $config.repository + "/releases?per_page=15") -Headers $headers)
+$releaseUri = "https://api.github.com/repos/$($config.repository)/releases?per_page=15"
+Write-Host ("Checking official Inventory Search releases: " + $config.repository)
+$releaseResponse = Invoke-RestMethod -Uri $releaseUri -Headers $headers
+
+# Explicitly flatten array responses; avoids Windows PowerShell 5.1
+# pipeline/enumeration differences and does not depend on ConvertFrom-Json depth.
+$releases = New-Object 'System.Collections.Generic.List[object]'
+function Add-InventorySearchRelease([object] $item) {
+    if ($null -eq $item) { return }
+    if ($item -is [array]) {
+        foreach ($child in $item) { Add-InventorySearchRelease $child }
+    } else {
+        [void] $releases.Add($item)
+    }
+}
+Add-InventorySearchRelease $releaseResponse
+
 $asset = $null
 $selectedRelease = $null
+$availableTags = New-Object 'System.Collections.Generic.List[string]'
 foreach ($release in $releases) {
-    if ($release.draft) { continue }
-    $a = @($release.assets | Where-Object { $_.name -eq $config.assetName }) | Select-Object -First 1
-    if ($a) { $asset = $a; $selectedRelease = $release; break }
+    if ($null -eq $release -or $release.draft -or -not $release.tag_name) { continue }
+    [void] $availableTags.Add([string]$release.tag_name)
+    foreach ($candidate in $release.assets) {
+        if ($null -ne $candidate -and [string]$candidate.name -eq [string]$config.assetName) {
+            $asset = $candidate
+            $selectedRelease = $release
+            break
+        }
+    }
+    if ($null -ne $asset) { break }
 }
-if (-not $asset) {
-    Write-Host 'No published release with InventorySearchPrototype.dll was found.'
-    exit 0
+if ($null -eq $asset) {
+    throw ("No matching DLL release asset found. Published tags returned: " +
+           [string]::Join(', ', $availableTags.ToArray()) +
+           ". Expected asset: " + [string]$config.assetName +
+           ". Reinstall from the official v1.0.0 ZIP if the repository is wrong.")
 }
+Write-Host ("Found release: " + $selectedRelease.tag_name + " | Asset: " + $asset.name)
 if (-not ([string]$asset.digest -match '^sha256:[A-Fa-f0-9]{64}$')) {
     throw 'Release asset lacks a SHA-256 digest. Refusing an unverified update.'
 }
