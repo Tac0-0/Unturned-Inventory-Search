@@ -298,7 +298,7 @@ if (-not (Test-Path -LiteralPath $addonChoicePath -PathType Leaf)) {
     Write-Host 'Optional: SmartCraft crafting compatibility (private-server members only).'
     Write-Host 'Inventory Search works without this add-on. The add-on is OFF by default.'
     $enableAddon = Read-Host 'Install the optional crafting add-on? [y/N]'
-    if ([string]$enableAddon -match '^[Yy]) {
+    if ([string]$enableAddon -match '^[Yy]$') {
         try {
             & (Join-Path $stateDir 'Manage-CraftingAddon.ps1') -Action Install
         } catch {
