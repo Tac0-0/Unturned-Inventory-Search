@@ -1,0 +1,57 @@
+name: Publish a complete Inventory Search release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semantic version (for example 1.1.0 or 2.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build full package with update manifest and verified DLL
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_VERSION" =~ ^[1-9][0-9]*\.[0-9]+\.[0-9]+$ ]]
+          python3 scripts/package-release.py "$RELEASE_VERSION"
+          cd release-assets
+          sha256sum -c SHA256SUMS.txt
+          unzip -p "InventorySearch-OneClick-v$RELEASE_VERSION.zip" "InventorySearch-OneClick-v$RELEASE_VERSION/update-manifest.json" | python3 -m json.tool >/dev/null
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$RELEASE_VERSION"
+          zip="release-assets/InventorySearch-OneClick-$tag.zip"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" \
+              release-assets/InventorySearchPrototype.dll \
+              "$zip" \
+              release-assets/SHA256SUMS.txt --clobber
+          else
+            notes="RELEASE_NOTES_$tag.md"
+            if [ -f "$notes" ]; then
+              gh release create "$tag" \
+                --target "$GITHUB_SHA" \
+                --title "Inventory Search $tag" \
+                --notes-file "$notes" \
+                release-assets/InventorySearchPrototype.dll "$zip" release-assets/SHA256SUMS.txt
+            else
+              gh release create "$tag" \
+                --target "$GITHUB_SHA" \
+                --title "Inventory Search $tag" \
+                --notes "Full Inventory Search release including DLL, updater scripts and complete update manifest." \
+                release-assets/InventorySearchPrototype.dll "$zip" release-assets/SHA256SUMS.txt
+            fi
+          fi
