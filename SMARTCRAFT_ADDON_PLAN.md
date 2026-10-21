@@ -30,10 +30,13 @@ SmartCraft release until that testing is complete.
 - Preference file: `%LOCALAPPDATA%\InventorySearch\crafting-addon.json`.
   This file is outside the release's managed manifest so updates cannot silently
   reset the user's choice.
-- `Update.ps1` treats the add-on as an OPTIONAL manifest entry whose
-  `optionalFeature` must equal `smartcraft-crafting` and whose target is exactly
-  `plugin/SmartCraftCraftingAddon.dll`. It verifies the release ZIP and the
-  file's SHA-256 before copying anything.
+- `Update.ps1` treats the add-on as an OPTIONAL entry in a **separate**
+  `optionalFiles` manifest section, NEVER in the legacy `files` section.
+  Older v1.0/v1.1 updaters ignore `optionalFiles` and cannot silently install
+  the add-on. The optional entry's `optionalFeature` must equal
+  `smartcraft-crafting` and its target must be exactly
+  `plugin/SmartCraftCraftingAddon.dll`. The new updater verifies the ZIP and
+  the add-on's SHA-256 before copying anything.
 - Unattended updates never prompt. They install/update the add-on only if
   the saved preference is enabled. Removal persists across later updates.
 - `Manage-CraftingAddon.ps1 -Action Install` uses the existing authenticated
