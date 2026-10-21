@@ -1,0 +1,65 @@
+name: Publish v1.0.0 release
+
+on:
+  push:
+    paths:
+      - 'dist/v1.0.0/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify v1.0.0 DLL and version metadata
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          binary = Path("dist/v1.0.0/InventorySearchPrototype.dll").read_bytes()
+          digest = hashlib.sha256(binary).hexdigest()
+          expected = "a45df1ee2202b05a20cdaf98bbfdbd8ad016113e7536381e9a9cb30f072aefc2"
+          assert digest == expected, f"Unexpected v1.0.0 DLL hash: {digest}"
+          assert b"Inventory Search Prototype\x051.0.0" in binary, "BepInEx plugin metadata version not v1.0.0"
+          assert "Inventory Search Prototype 1.0.0 loaded.".encode("utf-16le") in binary, "Plugin log version not v1.0.0"
+          print(f"Verified v1.0.0 DLL: {digest}")
+          PY
+      - name: Assemble the one-click v1.0.0 installer
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          stage="$(mktemp -d)"
+          target="$stage/InventorySearch-OneClick-v1.0.0"
+          mkdir -p "$target/payload"
+          cp -a installer/. "$target/"
+          cp README.md "$target/README.md"
+          cp dist/v1.0.0/InventorySearchPrototype.dll "$target/payload/InventorySearchPrototype.dll"
+          sha256sum "$target/payload/InventorySearchPrototype.dll" | cut -d' ' -f1 > "$target/payload/InventorySearchPrototype.sha256"
+          (cd "$stage" && zip -q -r "$GITHUB_WORKSPACE/release-assets/InventorySearch-OneClick-v1.0.0.zip" InventorySearch-OneClick-v1.0.0)
+          cp dist/v1.0.0/InventorySearchPrototype.dll release-assets/InventorySearchPrototype.dll
+          (cd release-assets && sha256sum InventorySearchPrototype.dll InventorySearch-OneClick-v1.0.0.zip > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+          unzip -l release-assets/InventorySearch-OneClick-v1.0.0.zip | grep -q '/payload/InventorySearchPrototype.dll'
+      - name: Publish stable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='v1.0.0'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" \
+              release-assets/InventorySearchPrototype.dll \
+              release-assets/InventorySearch-OneClick-v1.0.0.zip \
+              release-assets/SHA256SUMS.txt --clobber
+          else
+            gh release create "$tag" \
+              --target "$GITHUB_SHA" \
+              --title 'Inventory Search v1.0.0' \
+              --notes-file RELEASE_NOTES_v1.0.0.md \
+              release-assets/InventorySearchPrototype.dll \
+              release-assets/InventorySearch-OneClick-v1.0.0.zip \
+              release-assets/SHA256SUMS.txt
+          fi
