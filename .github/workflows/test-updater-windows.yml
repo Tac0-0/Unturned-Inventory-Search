@@ -82,19 +82,22 @@ jobs:
           if ($after -ne 'a45df1ee2202b05a20cdaf98bbfdbd8ad016113e7536381e9a9cb30f072aefc2') {
             throw "Wrong updated DLL: $after"
           }
-          foreach ($pair in @(
-            @('Update.ps1','Update.ps1'),
-            @('UPDATE-NOW.cmd','UPDATE-NOW.cmd'),
-            @('Install.ps1','Install.ps1'),
-            @('README.md','README.md')
-          )) {
-            $actual = (Get-FileHash (Join-Path $state $pair[0]) -Algorithm SHA256).Hash
-            if ($pair[0] -eq 'README.md') {
-              $expected = (Get-FileHash 'README.md' -Algorithm SHA256).Hash
+          # Git on Windows may check out source with CRLF, while release files are LF.
+          # Compare *binary hashes against the release manifest*, not the checkout.
+          $package = Join-Path $env:RUNNER_TEMP 'v1-extracted\InventorySearch-OneClick-v1.0.0'
+          $manifest = Get-Content -LiteralPath (Join-Path $package 'update-manifest.json') -Raw | ConvertFrom-Json
+          foreach ($entry in $manifest.files) {
+            $parts = $entry.target.Split('/')
+            $relative = [string]::Join('\', $parts[1..($parts.Length-1)])
+            $filePath = if ($parts[0] -eq 'app') {
+              Join-Path $state $relative
             } else {
-              $expected = (Get-FileHash (Join-Path $pwd ('installer\' + $pair[1])) -Algorithm SHA256).Hash
+              Join-Path (Join-Path $game 'BepInEx\plugins\InventorySearchPrototype') $relative
             }
-            if ($actual -ne $expected) { throw "App file failed to update: $($pair[0])" }
+            $actual = (Get-FileHash -LiteralPath $filePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne ([string]$entry.sha256).ToLowerInvariant()) {
+              throw "Manifest file failed to update: $($entry.target)"
+            }
           }
           $backupHash = (Get-FileHash (Join-Path $state 'InventorySearchPrototype.previous.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($backupHash -ne $before) { throw 'Previous DLL backup missing or invalid' }
