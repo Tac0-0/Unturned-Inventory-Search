@@ -20,6 +20,16 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%UPDATER%"
 set "EXITCODE=%ERRORLEVEL%"
 if not "%EXITCODE%"=="0" echo [ERROR] Updater exited with code %EXITCODE%.
 
+rem Manual update checks can also lead to the optional addon manager.
+rem Unattended scheduled updates run Update.ps1 directly and NEVER prompt.
+if "%EXITCODE%"=="0" (
+  echo.
+  echo Optional SmartCraft crafting add-on management:
+  echo   "%LOCALAPPDATA%\InventorySearch\CRAFTING-ADDON.cmd"
+  echo To remove ONLY the add-on:
+  echo   "%LOCALAPPDATA%\InventorySearch\UNINSTALL-CRAFTING.cmd"
+)
+
 :done
 echo.
 pause
