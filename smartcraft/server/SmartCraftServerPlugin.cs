@@ -60,33 +60,32 @@ namespace SmartCraft.Server
         {
             tensUsed = 0;
             hundredsUsed = 0;
-            int remaining = required;
-            // Consume the smallest useful bundle first to minimize change.
-            while (remaining > 0)
+            if (required <= 0) return true;
+            bool found = false;
+            long bestExcess = long.MaxValue;
+            int bestItemCount = int.MaxValue;
+            // Search bounded x100 choices and select the minimum required x10
+            // for each. Minimize overpayment first, then bundle item count.
+            // This avoids spending x100 when two x10 bundles suffice.
+            int maxHundreds = Math.Min(hundredsAvailable, (required + 99) / 100);
+            for (int hundreds = 0; hundreds <= maxHundreds; hundreds++)
             {
-                if (remaining <= 10 && tensUsed < tensAvailable)
+                int missing = Math.Max(0, required - hundreds * 100);
+                int tens = (missing + 9) / 10;
+                if (tens > tensAvailable) continue;
+                long excess = 100L * hundreds + 10L * tens - required;
+                int itemCount = tens + hundreds;
+                if (!found || excess < bestExcess ||
+                    (excess == bestExcess && itemCount < bestItemCount))
                 {
-                    tensUsed++;
-                    remaining -= 10;
+                    found = true;
+                    bestExcess = excess;
+                    bestItemCount = itemCount;
+                    tensUsed = tens;
+                    hundredsUsed = hundreds;
                 }
-                else if (remaining > 10 && hundredsUsed < hundredsAvailable)
-                {
-                    hundredsUsed++;
-                    remaining -= 100;
-                }
-                else if (tensUsed < tensAvailable)
-                {
-                    tensUsed++;
-                    remaining -= 10;
-                }
-                else if (hundredsUsed < hundredsAvailable)
-                {
-                    hundredsUsed++;
-                    remaining -= 100;
-                }
-                else return false;
             }
-            return true;
+            return found;
         }
 
         private static void RewriteCraft(PlayerCrafting crafting, ref Blueprint blueprint, ref bool shouldAllow)
