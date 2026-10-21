@@ -128,3 +128,61 @@ jobs:
             throw 'Idempotent second check failed'
           }
           Write-Host 'PASS: Entire mod, updater, launcher, docs, backup and version state upgraded. Repeat check works.'
+
+  optional-crafting-addon-manager:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify optional manager is parseable and uninstalls ONLY the addon
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @('installer/Manage-CraftingAddon.ps1', 'installer/Install.ps1', 'installer/Update.ps1', 'installer/Uninstall.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).Path, [ref]$tokens, [ref]$errors)
+            if ($errors -and $errors.Count -gt 0) { throw ('PowerShell syntax error in ' + $path + ': ' + ($errors | Out-String)) }
+          }
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'SmartCraftFixtureLocalAppData'
+          $state = Join-Path $env:LOCALAPPDATA 'InventorySearch'
+          $game = Join-Path $env:RUNNER_TEMP 'SmartCraftDummyUnturned'
+          $plugin = Join-Path $game 'BepInEx\plugins\InventorySearchPrototype'
+          $addon = Join-Path $plugin 'SmartCraftCraftingAddon.dll'
+          $base = Join-Path $plugin 'InventorySearchPrototype.dll'
+          New-Item -ItemType Directory -Path $plugin -Force | Out-Null
+          New-Item -ItemType Directory -Path $state -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $game 'Unturned.exe') -Value 'dummy'
+          Set-Content -LiteralPath $base -Value 'KEEP-CORE-MOD'
+          @{ gamePath = $game } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'config.json')
+          $stub = 'param([switch] $ForceAddonRepair)' + [Environment]::NewLine +
+                  'if (-not $ForceAddonRepair) { throw "Forced add-on repair flag was not used" }' + [Environment]::NewLine +
+                  "Set-Content -LiteralPath '$addon' -Value 'synthetic-addon'"
+          Set-Content -LiteralPath (Join-Path $state 'Update.ps1') -Value $stub
+          # v1.2 preference-only opt-in cannot install the unfinished engine.
+          @{ gamePath = $game; installedVersion='v1.2.0' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'config.json')
+          & ./installer/Manage-CraftingAddon.ps1 -Action Install
+          if (Test-Path $addon) { throw 'v1.2 installed an unwanted crafting DLL' }
+          if (-not ((Get-Content (Join-Path $state 'crafting-addon.json') -Raw | ConvertFrom-Json).enabled)) { throw 'v1.2 opt-in was not saved' }
+          & ./installer/Manage-CraftingAddon.ps1 -Action Uninstall
+          if (Test-Path $addon) { throw 'Uninstall left addon DLL behind' }
+          if ((Get-Content (Join-Path $state 'crafting-addon.json') -Raw | ConvertFrom-Json).enabled) { throw 'Opt-out was not saved' }
+          if ((Get-Content $base -Raw).Trim() -ne 'KEEP-CORE-MOD') { throw 'Base Inventory Search was modified' }
+          & ./installer/Manage-CraftingAddon.ps1 -Action Uninstall
+          # Simulate future v1.3+ engine release with a valid full-package updater.
+          @{ gamePath = $game; installedVersion='v1.3.0' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'config.json')
+          & ./installer/Manage-CraftingAddon.ps1 -Action Install
+          if (-not (Test-Path $addon)) { throw 'v1.3+ opt-in did not install synthetic addon' }
+          & ./installer/Manage-CraftingAddon.ps1 -Action Uninstall
+          # Failure restores disabled choice; optional add-on must never
+          # reactivate after an error in the official updater.
+          Set-Content -LiteralPath (Join-Path $state 'Update.ps1') -Value 'param([switch] $ForceAddonRepair); throw "Synthetic installer failure"'
+          try {
+            & ./installer/Manage-CraftingAddon.ps1 -Action Install
+            throw 'Expected optional install to fail'
+          } catch {
+            if ($_.Exception.Message -eq 'Expected optional install to fail') { throw }
+          }
+          if ((Get-Content (Join-Path $state 'crafting-addon.json') -Raw | ConvertFrom-Json).enabled) { throw 'Failed install did not restore opt-out' }
+          if (Test-Path $addon) { throw 'Failed install created addon unexpectedly' }
+          if ((Get-Content $base -Raw).Trim() -ne 'KEEP-CORE-MOD') { throw 'Base mod changed during failed addon install' }
+          Write-Host 'Optional add-on install, uninstall, idempotency and rollback tests passed.'

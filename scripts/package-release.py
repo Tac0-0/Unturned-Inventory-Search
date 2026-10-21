@@ -78,6 +78,9 @@ with tempfile.TemporaryDirectory(prefix="inventory-search-build-") as work:
         ("CONFIG.json", "app/package-CONFIG.json"),
         ("README.md", "app/README.md"),
         ("Update.ps1", "app/Update.ps1"),
+        ("Manage-CraftingAddon.ps1", "app/Manage-CraftingAddon.ps1"),
+        ("CRAFTING-ADDON.cmd", "app/CRAFTING-ADDON.cmd"),
+        ("UNINSTALL-CRAFTING.cmd", "app/UNINSTALL-CRAFTING.cmd"),
     ]
     mod_dir = root / "payload" / "mod"
     if mod_dir.is_dir():
@@ -85,11 +88,22 @@ with tempfile.TemporaryDirectory(prefix="inventory-search-build-") as work:
             if file.is_file():
                 relative = file.relative_to(mod_dir).as_posix()
                 mappings.append(("payload/mod/" + relative, "plugin/" + relative))
-    files = [{"source": src, "target": target,
-              "sha256": hashlib.sha256((root / src).read_bytes()).hexdigest()}
-             for src, target in mappings]
+    files = []
+    optional_files = []
+    for src, target in mappings:
+        entry = {"source": src, "target": target,
+                 "sha256": hashlib.sha256((root / src).read_bytes()).hexdigest()}
+        if target == "plugin/SmartCraftCraftingAddon.dll":
+            # OLD UPDATERS process ALL manifest.files without understanding
+            # optionalFeature. Therefore NEVER put the add-on in that array.
+            # A separate optionalFiles section is ignored by old versions.
+            entry["optionalFeature"] = "smartcraft-crafting"
+            optional_files.append(entry)
+        else:
+            files.append(entry)
     (root / "update-manifest.json").write_text(
-        json.dumps({"schemaVersion": 1, "version": tag, "files": files}, indent=2) + "\n",
+        json.dumps({"schemaVersion": 1, "version": tag,
+                    "files": files, "optionalFiles": optional_files}, indent=2) + "\n",
         encoding="utf-8"
     )
 

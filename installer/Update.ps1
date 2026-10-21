@@ -2,7 +2,7 @@
 # Windows PowerShell 5.1. Operates only inside this mod's game plugin folder
 # and %LOCALAPPDATA%\InventorySearch. No arbitrary paths from ZIPs are trusted.
 [CmdletBinding()]
-param()
+param([switch] $ForceAddonRepair)
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -12,6 +12,20 @@ if (-not (Test-Path -LiteralPath $configFile -PathType Leaf)) {
     throw 'Inventory Search configuration missing. Run INSTALL.cmd once.'
 }
 $config = Get-Content -LiteralPath $configFile -Raw | ConvertFrom-Json
+# This preference is NOT in the update manifest: unattended updates cannot reset it.
+$addonChoiceFile = Join-Path $stateDir 'crafting-addon.json'
+$craftingAddonEnabled = $false
+if (Test-Path -LiteralPath $addonChoiceFile -PathType Leaf) {
+    try {
+        $addonChoice = Get-Content -LiteralPath $addonChoiceFile -Raw | ConvertFrom-Json
+        $craftingAddonEnabled = ($addonChoice.enabled -eq $true)
+    } catch {
+        Write-Warning 'Invalid optional SmartCraft preference; leaving it disabled.'
+    }
+}
+if ($ForceAddonRepair -and -not $craftingAddonEnabled) {
+    throw 'SmartCraft install was not requested. Use the optional add-on manager to opt in.'
+}
 if ([string]$config.repository -ne 'Tac0-0/Unturned-Inventory-Search') {
     throw 'Unexpected GitHub repository in local config. Refusing unauthorised update source.'
 }
@@ -99,7 +113,7 @@ try {
         Write-Host 'Installed version is newer. Downgrade skipped.'
         exit 0
     }
-    if ($null -ne $installedVersion -and $installedVersion -eq $bestVersion -and $sameDll) {
+    if (-not $ForceAddonRepair -and $null -ne $installedVersion -and $installedVersion -eq $bestVersion -and $sameDll) {
         Write-Host 'Inventory Search is already up to date.'
         exit 0
     }
@@ -133,10 +147,17 @@ try {
 
         $foundDll = $false
         $foundUpdater = $false
+        $foundCraftingAddon = $false
         foreach ($item in $manifest.files) {
             $source = [string]$item.source
             $target = [string]$item.target
             $digest = [string]$item.sha256
+            # Legacy v1.0/v1.1 updaters install EVERY manifest.files entry.
+            # Fail closed if anyone puts optional features in this section.
+            if ($item.PSObject.Properties['optionalFeature'] -or
+                $target -ceq 'plugin/SmartCraftCraftingAddon.dll') {
+                throw 'Optional add-on must be in optionalFiles, not mandatory files.'
+            }
             # Strict relative paths: no traversal, drive letters, whitespace tricks, or backslashes.
             $safePath = '^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$'
             if ($source -cnotmatch $safePath -or $target -cnotmatch $safePath -or
@@ -164,6 +185,42 @@ try {
                 throw ('SHA-256 mismatch inside release package: ' + $source)
             }
             [void]$files.Add([pscustomobject]@{ Destination=$dest; Staged=$staged })
+        }
+        # Optional feature files are deliberately OUTSIDE manifest.files, which
+        # prevents older client updaters from silently installing this add-on.
+        # Limit to a single exact add-on identity and independently verify its
+        # SHA-256 before any replacement of installed files.
+        foreach ($optional in @($manifest.optionalFiles)) {
+            if ($null -eq $optional) { continue }
+            $source = [string]$optional.source
+            $target = [string]$optional.target
+            $digest = [string]$optional.sha256
+            if ($source -cne 'payload/mod/SmartCraftCraftingAddon.dll' -or
+                $target -cne 'plugin/SmartCraftCraftingAddon.dll' -or
+                [string]$optional.optionalFeature -cne 'smartcraft-crafting' -or
+                $digest -notmatch '^[A-Fa-f0-9]{64}$' -or $foundCraftingAddon) {
+                throw 'Unknown, duplicated, or invalid optional SmartCraft release file.'
+            }
+            $foundCraftingAddon = $true
+            if (-not $seen.Add($target)) {
+                throw 'SmartCraft add-on was also listed in mandatory release files.'
+            }
+            $entryPath = $root + $source
+            $entries = @($zip.Entries | Where-Object { $_.FullName -ceq $entryPath })
+            if ($entries.Count -ne 1) { throw ('Missing/duplicate optional ZIP file: ' + $entryPath) }
+            if ($entries[0].Length -gt 52428800) { throw ('Oversized optional release file: ' + $entryPath) }
+            $staged = Join-Path $tmpRoot ('optional-stage-' + $files.Count)
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entries[0], $staged)
+            if ((Get-FileHash -LiteralPath $staged -Algorithm SHA256).Hash -ne $digest.ToUpperInvariant()) {
+                throw ('Optional SmartCraft SHA-256 mismatch: ' + $source)
+            }
+            if ($craftingAddonEnabled) {
+                $dest = Join-Path $pluginDir 'SmartCraftCraftingAddon.dll'
+                [void]$files.Add([pscustomobject]@{ Destination=$dest; Staged=$staged })
+            }
+        }
+        if ($ForceAddonRepair -and -not $foundCraftingAddon) {
+            throw 'This official Inventory Search release does not offer the optional SmartCraft add-on yet.'
         }
         if (-not $foundDll -or -not $foundUpdater) {
             throw 'Update manifest must contain the mod DLL and its updater.'

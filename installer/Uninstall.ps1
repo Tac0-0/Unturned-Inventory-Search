@@ -19,6 +19,14 @@ if (Test-Path -LiteralPath $target -PathType Leaf) {
     Remove-Item -LiteralPath $target -Force
     Write-Host 'Inventory Search DLL removed.'
 }
+# An optional SmartCraft DLL lives in our owned plugin directory.
+# Full Inventory Search uninstall removes it too, but add-on-only uninstall
+# is independently available from UNINSTALL-CRAFTING.cmd.
+$addonTarget = Join-Path ([string]$config.gamePath) 'BepInEx\plugins\InventorySearchPrototype\SmartCraftCraftingAddon.dll'
+if (Test-Path -LiteralPath $addonTarget -PathType Leaf) {
+    Remove-Item -LiteralPath $addonTarget -Force
+    Write-Host 'Optional SmartCraft crafting DLL removed.'
+}
 try { Unregister-ScheduledTask -TaskName 'Inventory Search Auto Update' -Confirm:$false -ErrorAction SilentlyContinue | Out-Null }
 catch { Write-Warning ('Task removal was unsuccessful: ' + $_.Exception.Message) }
 Remove-Item -LiteralPath $stateDir -Force -Recurse -ErrorAction SilentlyContinue
