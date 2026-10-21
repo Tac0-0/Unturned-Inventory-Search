@@ -40,6 +40,8 @@ The installer and updater source is in [`installer/`](installer/). Review script
 
 **Updates:** An updater is included and can check GitHub Releases, but its end-to-end upgrade behavior is not tested yet. We'll validate it against a later release.
 
+**If `UPDATE-NOW.cmd` reports that `Update.ps1` is missing:** Download and extract the latest installer ZIP, then rerun `INSTALL.cmd` with Unturned closed. The updated `UPDATE-NOW.cmd` will restore the updater script from the extracted folder if installation configuration exists. If configuration is missing too, the original install did not complete and must be run again. When you're already on v0.1.6, the update check should simply say you're up to date; this is **not yet proof that updating between versions works**.
+
 ## Compatibility and limitations
 
 - Client-side **BepInEx 5 + Harmony** plugin. No server-side component required for the search itself.
