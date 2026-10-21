@@ -53,10 +53,16 @@ jobs:
                   data = z.read(root + entry['source'])
                   assert hashlib.sha256(data).hexdigest() == entry['sha256'], entry
               assert any(e['target'] == 'plugin/subdir/search-theme.txt' for e in manifest['files'])
-              optional_entries = [e for e in manifest['files'] if e['target'] == 'plugin/SmartCraftCraftingAddon.dll']
+              # Older v1.0 updaters consume ONLY manifest.files. They must never
+              # see the optional add-on or they will install it without consent.
+              assert all(e['target'] != 'plugin/SmartCraftCraftingAddon.dll' for e in manifest['files'])
+              optional_entries = manifest.get('optionalFiles', [])
               assert len(optional_entries) == 1
+              assert optional_entries[0]['target'] == 'plugin/SmartCraftCraftingAddon.dll'
               assert optional_entries[0].get('optionalFeature') == 'smartcraft-crafting'
-              assert sum(1 for e in manifest['files'] if e.get('optionalFeature')) == 1
+              for entry in optional_entries:
+                  data = z.read(root + entry['source'])
+                  assert hashlib.sha256(data).hexdigest() == entry['sha256']
 
               assert json.loads(z.read(root + 'CONFIG.json'))['version'] == '1.2.0'
               pin = hashlib.sha256(z.read(root + 'payload/InventorySearchPrototype.dll')).hexdigest().upper()
