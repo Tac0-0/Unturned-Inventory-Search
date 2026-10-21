@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $settings = Get-Content -LiteralPath (Join-Path $here 'CONFIG.json') -Raw | ConvertFrom-Json
 # Pin the SHA-256 of the already-tested v0.1.6 DLL. Never trust a missing/broken local payload.
-$expectedHash = '405662CB3023DA2D6CDD7D5D8EF62457E624D654489DA8FB729A8A3141BED515'
+$expectedHash = 'A45DF1EE2202B05A20CDAF98BBFDBD8AD016113E7536381E9A9CB30F072AEFC2'
 $hashFile = Join-Path $here 'payload\InventorySearchPrototype.sha256'
 if (Test-Path -LiteralPath $hashFile -PathType Leaf) {
     $bundledHash = (Get-Content -LiteralPath $hashFile -Raw).Trim().ToUpperInvariant()
@@ -20,9 +20,9 @@ $dllSource = Join-Path $here 'payload\InventorySearchPrototype.dll'
 $recoveryPath = $null
 if (-not (Test-Path -LiteralPath $dllSource -PathType Leaf)) {
     Write-Warning 'The installer DLL is missing. This may be a GitHub source-code ZIP, incomplete extraction, or antivirus quarantine.'
-    Write-Host 'Downloading the tested DLL from the official v0.1.6-beta GitHub release...' -ForegroundColor Cyan
+    Write-Host 'Downloading the tested DLL from the official v1.0.0 GitHub release...' -ForegroundColor Cyan
     $recoveryPath = Join-Path ([IO.Path]::GetTempPath()) ('InventorySearch-' + [guid]::NewGuid().ToString('N') + '.dll')
-    $downloadUrl = 'https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v0.1.6-beta/InventorySearchPrototype.dll'
+    $downloadUrl = 'https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.0.0/InventorySearchPrototype.dll'
     try {
         Invoke-WebRequest -Uri $downloadUrl -OutFile $recoveryPath -UseBasicParsing
         $dllSource = $recoveryPath
