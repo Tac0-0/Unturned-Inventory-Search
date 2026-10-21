@@ -67,6 +67,18 @@ jobs:
           Copy-Item -LiteralPath 'dist\InventorySearchPrototype.dll' -Destination $target -Force
           $config.installedVersion = 'v0.1.6'
           $config | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath -Encoding UTF8
+          # A previous version owned retired.txt, but NOT unrelated.txt.
+          $previousManifestPath = Join-Path $state 'installed-manifest.json'
+          $oldManifest = Get-Content $previousManifestPath -Raw | ConvertFrom-Json
+          $oldManifest.files = @($oldManifest.files) + @([pscustomobject]@{
+            source='payload/mod/retired.txt'
+            target='plugin/retired.txt'
+            sha256=('0' * 64)
+          })
+          $oldManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $previousManifestPath -Encoding UTF8
+          $pluginFolder = Join-Path $game 'BepInEx\plugins\InventorySearchPrototype'
+          Set-Content -LiteralPath (Join-Path $pluginFolder 'retired.txt') -Value 'obsolete'
+          Set-Content -LiteralPath (Join-Path $pluginFolder 'unrelated.txt') -Value 'do-not-delete'
           Set-Content -LiteralPath (Join-Path $state 'README.md') -Value 'old docs'
           Set-Content -LiteralPath (Join-Path $state 'UPDATE-NOW.cmd') -Value '@echo off'
           $before = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -98,6 +110,12 @@ jobs:
             if ($actual -ne ([string]$entry.sha256).ToLowerInvariant()) {
               throw "Manifest file failed to update: $($entry.target)"
             }
+          }
+          if (Test-Path -LiteralPath (Join-Path $pluginFolder 'retired.txt')) { throw 'Obsolete owned file not removed' }
+          if (-not (Test-Path -LiteralPath (Join-Path $pluginFolder 'unrelated.txt'))) { throw 'Unrelated file was removed' }
+          $newManifest = Get-Content -LiteralPath $previousManifestPath -Raw | ConvertFrom-Json
+          if (@($newManifest.files | Where-Object { $_.target -eq 'plugin/retired.txt' }).Count -gt 0) {
+            throw 'Retired file still recorded in new manifest'
           }
           $backupHash = (Get-FileHash (Join-Path $state 'InventorySearchPrototype.previous.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($backupHash -ne $before) { throw 'Previous DLL backup missing or invalid' }
