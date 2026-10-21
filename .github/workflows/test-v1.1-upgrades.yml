@@ -89,7 +89,7 @@ jobs:
           } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'config.json')
           $oldScript = git show "$($historical):installer/Update.ps1"
           if ($LASTEXITCODE -ne 0) { throw 'Unable to retrieve old updater script' }
-          [IO.File]::WriteAllText((Join-Path $state 'Update.ps1'), [string]::Join("\n", $oldScript) + "\n")
+          [IO.File]::WriteAllText((Join-Path $state 'Update.ps1'), [string]::Join([Environment]::NewLine, $oldScript) + [Environment]::NewLine)
           $log = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $state 'Update.ps1') 2>&1 | Out-String)
           Write-Host $log
           if ($LASTEXITCODE -ne 0 -or $log -notmatch 'Inventory Search updated from official release: v1.1.0') { throw 'Old DLL-only updater failed to install new DLL' }
