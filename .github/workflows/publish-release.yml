@@ -30,42 +30,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             ver="$INPUT_VERSION"
           else
-            mapfile -t changed < <(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^dist/v[0-9]+\.[0-9]+\.[0-9]+/InventorySearchPrototype\.dll        run: |
-          set -euo pipefail
-          [[ "$RELEASE_VERSION" =~ ^[1-9][0-9]*\.[0-9]+\.[0-9]+$ ]]
-          python3 scripts/package-release.py "$RELEASE_VERSION"
-          cd release-assets
-          sha256sum -c SHA256SUMS.txt
-          unzip -p "InventorySearch-OneClick-v$RELEASE_VERSION.zip" "InventorySearch-OneClick-v$RELEASE_VERSION/update-manifest.json" | python3 -m json.tool >/dev/null
-      - name: Publish release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          tag="v$RELEASE_VERSION"
-          zip="release-assets/InventorySearch-OneClick-$tag.zip"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" \
-              release-assets/InventorySearchPrototype.dll \
-              "$zip" \
-              release-assets/SHA256SUMS.txt --clobber
-          else
-            notes="RELEASE_NOTES_$tag.md"
-            if [ -f "$notes" ]; then
-              gh release create "$tag" \
-                --target "$GITHUB_SHA" \
-                --title "Inventory Search $tag" \
-                --notes-file "$notes" \
-                release-assets/InventorySearchPrototype.dll "$zip" release-assets/SHA256SUMS.txt
-            else
-              gh release create "$tag" \
-                --target "$GITHUB_SHA" \
-                --title "Inventory Search $tag" \
-                --notes "Full Inventory Search release including DLL, updater scripts and complete update manifest." \
-                release-assets/InventorySearchPrototype.dll "$zip" release-assets/SHA256SUMS.txt
-            fi
-          fi
- || true)
+            mapfile -t changed < <(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^dist/v[0-9]+\.[0-9]+\.[0-9]+/InventorySearchPrototype\.dll$' || true)
             if [ "${#changed[@]}" -ne 1 ]; then
               echo 'Expected exactly one versioned DLL changed in push' >&2
               exit 1
@@ -87,7 +52,6 @@ jobs:
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           tag="v$RELEASE_VERSION"
