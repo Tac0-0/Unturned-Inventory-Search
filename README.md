@@ -2,7 +2,7 @@
 
 A lightweight, **client-side** inventory search mod for [Unturned](https://store.steampowered.com/app/304930/Unturned/).
 
-> **v1.0.0 (updater-validation release).** Search functionality was verified in singleplayer and private multiplayer without BattlEye, including More Storage containers, using v0.1.6. v1.0.0 contains the same functionality with updated version metadata. Automatic updates and in-game v1.0.0 behavior are being tested.
+> **v1.0.0** ships a one-time installer and a full-package self-updater. The v0.1.6 search behavior has been tested in singleplayer and private multiplayer without BattlEye. Installation and complete-package update behavior have Windows PowerShell 5.1 automated tests; v1.0.0 gameplay validation on friends' PCs is ongoing.
 
 ## ⬇️ Easy installation (Windows)
 
@@ -18,7 +18,7 @@ A lightweight, **client-side** inventory search mod for [Unturned](https://store
 
 **Install says “extract ZIP first” even though you already did?** Use the [installer ZIP linked above](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.0.0/InventorySearch-OneClick-v1.0.0.zip), **not** GitHub's green `Code → Download ZIP`. The patched installer can recover a missing DLL by downloading the official release asset and checking its SHA-256. If that still fails, check Windows Security → Protection history for a quarantined `InventorySearchPrototype.dll` and share the exact error output. Don't disable antivirus to install this mod.
 
-> This is a BepInEx client mod, not an automatic Steam Workshop download. The updater is included; **v0.1.6-beta → v1.0.0 is the first real upgrade test** and has not yet been verified on Windows.
+> This is a BepInEx client mod, not an automatic Steam Workshop download. The installer includes a permanent full-package updater, automatically scheduled at login and daily. No new ZIP downloads are needed for future releases.
 
 ## Features
 
@@ -38,9 +38,13 @@ The installer and updater source is in [`installer/`](installer/). Review script
 
 **Manual installation:** If you prefer, install BepInEx 5 x64 yourself, then download the [DLL directly](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.0.0/InventorySearchPrototype.dll) and place it in `Unturned/BepInEx/plugins/InventorySearchPrototype/`.
 
-**Testing an upgrade from v0.1.6-beta:** Keep your existing v0.1.6 installation. **Close Unturned** and download the **latest v1.0.0 installer ZIP above**. Extract it, open the new folder and run **`UPDATE-NOW.cmd` (not `INSTALL.cmd`)**. This refreshes the old updater script locally, then upgrades the DLL automatically. It should say `Inventory Search updated from official release: v1.0.0`; a second run should say `Inventory Search is already up to date.` Launch the game to verify the search still works. The upgrade mechanism passed a real Windows PowerShell 5.1 GitHub Actions end-to-end test, and needs confirmation on players' PCs. See [v1.0.0 release notes](RELEASE_NOTES_v1.0.0.md).
+**Automatic updates from v1.0.0 onward:** You install **v1.0.0 once**. The installer puts a permanent updater under `%LOCALAPPDATA%\InventorySearch` and registers checks at Windows sign-in and daily. When v1.1.0, v1.2.0, v2.0.0, or a later stable release is published, the updater downloads its **full release ZIP** directly from GitHub Releases, verifies the ZIP's SHA-256 and the per-file update manifest, and updates the mod DLL, any additional mod files, updater, installer and uninstall scripts, and packaged documentation. Files retired by newer releases are removed **only** if an earlier manifest recorded that Inventory Search owned them. Existing game saves, other plugins, BepInEx, and the user-specific game path are preserved. Updates pause while Unturned is running.
 
-**If `UPDATE-NOW.cmd` reports that `Update.ps1` is missing:** Download and extract the latest installer ZIP, then rerun `INSTALL.cmd` with Unturned closed. The updated `UPDATE-NOW.cmd` will restore the updater script from the extracted folder if installation configuration exists. If configuration is missing too, the original install did not complete and must be run again. After reinstalling v1.0.0, the update check should say you're up to date. To verify the actual upgrade, run an updater originally installed with v0.1.6 against the v1.0.0 release.
+**Manual update check (without downloading anything):** Windows Start menu → **Inventory Search → Check for Updates**. Or double-click `%LOCALAPPDATA%\InventorySearch\UPDATE-NOW.cmd`. The originally downloaded ZIP can be deleted after installation.
+
+**Recovery:** The updater keeps `%LOCALAPPDATA%\InventorySearch\InventorySearchPrototype.previous.dll` after an upgrade. File replacement failures trigger an attempt to restore all changed files and configuration. If an updater script from an **older v1.0.0 installer** predates these improvements, run the **current v1.0.0 `INSTALL.cmd` once** to repair the updater; subsequent stable releases update automatically with no new installer download.
+
+**Previous v0.1.6-beta installs:** The stable starting point for friends is a fresh **v1.0.0 install**. The beta installer predates the permanent full-package updater design; don't use it to judge future automatic-upgrade behavior.
 
 ## Compatibility and limitations
 
@@ -63,7 +67,7 @@ The C# project builds against **your local game assemblies**, which cannot be re
 
 ## Development status
 
-v0.1.6 was built and verified on Windows in singleplayer and private multiplayer without BattlEye; its installer, uninstaller and fresh BepInEx setup were tested. v1.0.0 is a version-metadata-only binary update from that working build, issued to validate the updater. The actual v0.1.6 → v1.0.0 upgrade and v1.0.0 in-game loading still need testing. See [v1.0.0 release notes](RELEASE_NOTES_v1.0.0.md) and [beta release notes](RELEASE_NOTES.md). Report issues with Unturned version, BepInEx version, and the relevant `BepInEx/LogOutput.log` entries.
+v0.1.6 search behavior was verified on Windows in singleplayer and private multiplayer without BattlEye. v1.0.0 uses version-metadata-only changes to that binary; the new v1.0.0 release package and full self-update system have automated Windows tests. In-game v1.0.0 confirmation on player machines and future-version compatibility are still being verified. See [v1.0.0 release notes](RELEASE_NOTES_v1.0.0.md) and [beta release notes](RELEASE_NOTES.md). Report issues with Unturned version, BepInEx version, and the relevant `BepInEx/LogOutput.log` entries.
 
 ## License
 
