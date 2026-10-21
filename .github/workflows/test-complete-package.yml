@@ -1,0 +1,50 @@
+name: Test complete ZIP self-updater on Windows
+
+on:
+  push:
+    paths:
+      - 'installer/**'
+      - 'scripts/package-release.py'
+      - 'tests/full_package_reconcile.ps1'
+      - '.github/workflows/test-complete-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-zip-reconcile:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create synthetic future release and complete ZIP
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          from pathlib import Path
+          source = Path("dist/v1.0.0/InventorySearchPrototype.dll").read_bytes()
+          old = b"Inventory Search Prototype\x051.0.0"
+          new = b"Inventory Search Prototype\x051.9.9"
+          assert source.count(old) == 1
+          source = source.replace(old, new)
+          old_log = "Inventory Search Prototype 1.0.0 loaded.".encode("utf-16le")
+          new_log = "Inventory Search Prototype 1.9.9 loaded.".encode("utf-16le")
+          assert source.count(old_log) == 1
+          source = source.replace(old_log, new_log)
+          target = Path("dist/v1.9.9")
+          target.mkdir(parents=True, exist_ok=True)
+          (target / "InventorySearchPrototype.dll").write_bytes(source)
+          '@ | python3 -
+          if ($LASTEXITCODE -ne 0) { throw 'Could not prepare synthetic DLL' }
+          python3 scripts/package-release.py 1.9.9
+          if ($LASTEXITCODE -ne 0) { throw 'Complete package build failed' }
+      - name: Test manifest reconciliation and repair in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'installer/Update.ps1').Path, [ref]$tokens, [ref]$errors)
+          if ($errors -and $errors.Count -gt 0) { throw ($errors | Out-String) }
+          & ./tests/full_package_reconcile.ps1

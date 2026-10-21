@@ -2,11 +2,11 @@
 
 A lightweight, **client-side** inventory search mod for [Unturned](https://store.steampowered.com/app/304930/Unturned/).
 
-> **v1.2.0** is the latest stable release. v1.2 introduces a one-time **SmartCraft opt-in question** for private-server players; the crafting engine is **not included** until a future v1.3+ release. Modern v1.0.0+ installations include a one-time installer and a full-package self-updater. The v0.1.6 search behavior has been tested in singleplayer and private multiplayer without BattlEye. Installation and complete-package update behavior have Windows PowerShell 5.1 automated tests; v1.0.0 gameplay validation on friends' PCs is ongoing.
+> **v1.2.1** is the latest stable release. v1.2 introduces a one-time **SmartCraft opt-in question** for private-server players; the crafting engine is **not included** until a future v1.3+ release. Modern v1.0.0+ installations include a one-time installer and a full-package self-updater. The v0.1.6 search behavior has been tested in singleplayer and private multiplayer without BattlEye. Installation and complete-package update behavior have Windows PowerShell 5.1 automated tests; v1.0.0 gameplay validation on friends' PCs is ongoing.
 
 ## ⬇️ Easy installation (Windows)
 
-### **[👉 DOWNLOAD THE INSTALLER ZIP (v1.2.0)](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.2.0.zip)**
+### **[👉 DOWNLOAD THE INSTALLER ZIP (v1.2.1)](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.2.1.zip)**
 
 **No coding, compiling, or manual BepInEx setup needed.**
 
@@ -16,9 +16,15 @@ A lightweight, **client-side** inventory search mod for [Unturned](https://store
 
 **Want to remove it?** Run **`UNINSTALL.cmd`** from the extracted folder. The installer and uninstaller were tested on one Windows laptop.
 
-**Install says “extract ZIP first” even though you already did?** Use the [installer ZIP linked above](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.2.0.zip), **not** GitHub's green `Code → Download ZIP`. The patched installer can recover a missing DLL by downloading the official release asset and checking its SHA-256. If that still fails, check Windows Security → Protection history for a quarantined `InventorySearchPrototype.dll` and share the exact error output. Don't disable antivirus to install this mod.
+**Install says “extract ZIP first” even though you already did?** Use the [installer ZIP linked above](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.2.1.zip), **not** GitHub's green `Code → Download ZIP`. The patched installer can recover a missing DLL by downloading the official release asset and checking its SHA-256. If that still fails, check Windows Security → Protection history for a quarantined `InventorySearchPrototype.dll` and share the exact error output. Don't disable antivirus to install this mod.
 
 > This is a BepInEx client mod, not an automatic Steam Workshop download. The installer includes a permanent full-package updater, automatically scheduled at login and daily. No new ZIP downloads are needed for future releases.
+
+## Full-package self-updater (v1.2.1)
+
+From v1.2.1 onward, the updater verifies and reconciles **the full release ZIP**, not merely the DLL. It installs new CMD/PS1 files, updates its own scripts, repairs missing package files even when the game DLL already reports the newest version, and deletes retired files that a previous manifest marked as owned by Inventory Search. It does not delete saves, unrelated plugins, BepInEx, or personal preferences.
+
+A one-time run of the newest full-package `INSTALL.cmd` is needed **only** for installations still using the early DLL-only updater. The updater synchronizes permanent files in `%LOCALAPPDATA%\\InventorySearch`, not an old extracted ZIP left in Downloads.
 
 ## Optional SmartCraft preference (v1.2.0)
 
@@ -44,7 +50,7 @@ The installer detects your Unturned folder (or prompts you to select it), downlo
 
 The installer and updater source is in [`installer/`](installer/). Review scripts before executing them, especially on shared or managed computers.
 
-**Manual installation:** If you prefer, install BepInEx 5 x64 yourself, then download the [DLL directly](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.2.0/InventorySearchPrototype.dll) and place it in `Unturned/BepInEx/plugins/InventorySearchPrototype/`.
+**Manual installation:** If you prefer, install BepInEx 5 x64 yourself, then download the [DLL directly](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.2.1/InventorySearchPrototype.dll) and place it in `Unturned/BepInEx/plugins/InventorySearchPrototype/`.
 
 **Automatic updates from v1.0.0 onward:** You install **v1.0.0 once**. The installer puts a permanent updater under `%LOCALAPPDATA%\InventorySearch` and registers checks at Windows sign-in and daily. When v1.1.0, v1.2.0, v2.0.0, or a later stable release is published, the updater downloads its **full release ZIP** directly from GitHub Releases, verifies the ZIP's SHA-256 and the per-file update manifest, and updates the mod DLL, any additional mod files, updater, installer and uninstall scripts, and packaged documentation. Files retired by newer releases are removed **only** if an earlier manifest recorded that Inventory Search owned them. Existing game saves, other plugins, BepInEx, and the user-specific game path are preserved. Updates pause while Unturned is running.
 

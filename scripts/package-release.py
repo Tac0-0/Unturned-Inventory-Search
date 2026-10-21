@@ -69,25 +69,39 @@ with tempfile.TemporaryDirectory(prefix="inventory-search-build-") as work:
         "Uninstall from %LOCALAPPDATA%\\InventorySearch\\UNINSTALL.cmd.\n",
         encoding="utf-8"
     )
+    # The release ZIP is the source of truth for *all* package-owned files.
+    # Future CMD/PS1/docs/resources are discovered automatically: no hardcoded
+    # allowlist to update when a new file appears or an old file is retired.
     mappings = [
         ("payload/InventorySearchPrototype.dll", "plugin/InventorySearchPrototype.dll"),
-        ("UPDATE-NOW.cmd", "app/UPDATE-NOW.cmd"),
-        ("UNINSTALL.cmd", "app/UNINSTALL.cmd"),
-        ("Uninstall.ps1", "app/Uninstall.ps1"),
-        ("Install.ps1", "app/Install.ps1"),
-        ("CONFIG.json", "app/package-CONFIG.json"),
-        ("README.md", "app/README.md"),
-        ("Update.ps1", "app/Update.ps1"),
-        ("Manage-CraftingAddon.ps1", "app/Manage-CraftingAddon.ps1"),
-        ("CRAFTING-ADDON.cmd", "app/CRAFTING-ADDON.cmd"),
-        ("UNINSTALL-CRAFTING.cmd", "app/UNINSTALL-CRAFTING.cmd"),
+        ("payload/InventorySearchPrototype.sha256", "app/payload/InventorySearchPrototype.sha256"),
     ]
-    mod_dir = root / "payload" / "mod"
-    if mod_dir.is_dir():
-        for file in sorted(mod_dir.rglob("*")):
-            if file.is_file():
-                relative = file.relative_to(mod_dir).as_posix()
-                mappings.append(("payload/mod/" + relative, "plugin/" + relative))
+    for file in sorted(root.rglob("*")):
+        if not file.is_file():
+            continue
+        source = file.relative_to(root).as_posix()
+        if source in {"update-manifest.json",
+                      "payload/InventorySearchPrototype.dll",
+                      "payload/InventorySearchPrototype.sha256"}:
+            continue
+        if source.startswith("payload/mod/"):
+            target = "plugin/" + source.removeprefix("payload/mod/")
+        elif source == "CONFIG.json":
+            # Never overwrite per-user config.json with packaged defaults.
+            target = "app/package-CONFIG.json"
+        else:
+            target = "app/" + source
+        mappings.append((source, target))
+    # Fail at build time rather than shipping a package that the updater rejects.
+    safe_path = re.compile(r"^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$")
+    targets = set()
+    for source, target in mappings:
+        if not safe_path.fullmatch(source) or not safe_path.fullmatch(target):
+            raise SystemExit(f"Unsafe packaged path: {source} -> {target}")
+        normalized = target.lower()
+        if normalized in targets:
+            raise SystemExit(f"Duplicate package destination: {target}")
+        targets.add(normalized)
     files = []
     optional_files = []
     for src, target in mappings:

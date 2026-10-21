@@ -113,10 +113,10 @@ try {
         Write-Host 'Installed version is newer. Downgrade skipped.'
         exit 0
     }
-    if (-not $ForceAddonRepair -and $null -ne $installedVersion -and $installedVersion -eq $bestVersion -and $sameDll) {
-        Write-Host 'Inventory Search is already up to date.'
-        exit 0
-    }
+    # Matching DLL and version are NOT sufficient. A legacy DLL-only updater
+    # can leave new CMD/PS1 files missing, and installed files may be damaged.
+    # Download the small, authenticated full package and audit every owned file.
+    # Only skip when the complete on-disk package really matches the manifest.
 
     $tmpRoot = Join-Path ([IO.Path]::GetTempPath()) ('InventorySearch-Update-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmpRoot | Out-Null
@@ -249,6 +249,34 @@ try {
         }
     }
 
+    # Check the ENTIRE installed package, not only the DLL. On every check
+    # this also repairs missing new commands and other damaged managed files.
+    $needsChanges = $ForceAddonRepair -or $null -eq $installedVersion -or
+                    $installedVersion -ne $bestVersion
+    if (-not (Test-Path -LiteralPath $previousManifestPath -PathType Leaf)) {
+        $needsChanges = $true
+    } elseif ([string]$oldManifest.version -cne $tag) {
+        $needsChanges = $true
+    } elseif (@($oldManifest.files).Count -ne @($manifest.files).Count) {
+        $needsChanges = $true
+    }
+    foreach ($file in $files) {
+        if (-not (Test-Path -LiteralPath $file.Destination -PathType Leaf)) {
+            $needsChanges = $true
+            continue
+        }
+        if ((Get-FileHash -LiteralPath $file.Destination -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $file.Staged -Algorithm SHA256).Hash) {
+            $needsChanges = $true
+        }
+    }
+    foreach ($obsoletePath in $obsolete) {
+        if (Test-Path -LiteralPath $obsoletePath -PathType Leaf) { $needsChanges = $true }
+    }
+    if (-not $needsChanges) {
+        Write-Host 'Inventory Search is already up to date (complete package verified).'
+        exit 0
+    }
     if (Get-Process -Name Unturned -ErrorAction SilentlyContinue) {
         Write-Host 'Unturned opened during download. No files replaced. Try after closing it.'
         exit 0
@@ -260,6 +288,12 @@ try {
         foreach ($file in $files) {
             $dest = [string]$file.Destination
             $existed = Test-Path -LiteralPath $dest -PathType Leaf
+            if ($existed -and
+                (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -eq
+                (Get-FileHash -LiteralPath $file.Staged -Algorithm SHA256).Hash) {
+                # Preserve timestamps and avoid rewriting files that already match.
+                continue
+            }
             $backup = Join-Path $tmpRoot ('backup-' + $backups.Count)
             if ($existed) { Copy-Item -LiteralPath $dest -Destination $backup -Force }
             [void]$backups.Add([pscustomobject]@{ Destination=$dest; Existed=$existed; Backup=$backup })
@@ -312,6 +346,8 @@ try {
         }
         throw ('Update failed; attempted to restore the previous installation. ' + $originalError.Exception.Message)
     }
+    # Do not rewrite byte-identical files, but always reconcile the entire
+    # manifest and retire files owned by earlier releases.
     # Keep one previous DLL for manual recovery if an updated plugin fails in-game.
     $dllBackup = @($backups | Where-Object { $_.Destination -eq $pluginDll -and $_.Existed }) | Select-Object -First 1
     if ($dllBackup) {
@@ -320,7 +356,8 @@ try {
         } catch { Write-Warning ('Could not retain optional previous-DLL backup: ' + $_.Exception.Message) }
     }
     Write-Host ('Inventory Search updated from official release: ' + $tag)
-    Write-Host 'Updated plugin DLL, updater components, and release files.'
+    Write-Host ('Reconciled complete release ZIP: ' + $files.Count +
+                ' current files, ' + $obsolete.Count + ' retired owned paths.')
 } finally {
     if ($tmpRoot) { Remove-Item -LiteralPath $tmpRoot -Force -Recurse -ErrorAction SilentlyContinue }
     if ($locked) { $mutex.ReleaseMutex() }

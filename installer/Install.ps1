@@ -211,26 +211,40 @@ Set-Content -LiteralPath (Join-Path $stateDir 'config.json') -Value $state -Enco
 
 # Install and maintain the entire client updater package in a permanent per-user
 # location. The downloaded ZIP can be deleted; future releases update these files.
-foreach ($item in @(
-    @{ Source='Update.ps1'; Target='Update.ps1' },
-    @{ Source='UPDATE-NOW.cmd'; Target='UPDATE-NOW.cmd' },
-    @{ Source='UNINSTALL.cmd'; Target='UNINSTALL.cmd' },
-    @{ Source='Uninstall.ps1'; Target='Uninstall.ps1' },
-    @{ Source='Install.ps1'; Target='Install.ps1' },
-    @{ Source='CONFIG.json'; Target='package-CONFIG.json' },
-    @{ Source='README.md'; Target='README.md' },
-    @{ Source='Manage-CraftingAddon.ps1'; Target='Manage-CraftingAddon.ps1' },
-    @{ Source='CRAFTING-ADDON.cmd'; Target='CRAFTING-ADDON.cmd' },
-    @{ Source='UNINSTALL-CRAFTING.cmd'; Target='UNINSTALL-CRAFTING.cmd' }
-)) {
-    $sourceFile = Join-Path $here $item.Source
-    if (Test-Path -LiteralPath $sourceFile -PathType Leaf) {
-        Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $stateDir $item.Target) -Force
-    } elseif ($item.Source -eq 'README.md') {
-        Write-Warning 'Installer README missing; updater will fetch it on a future release.'
-    } else {
-        throw ('Required installer component missing: ' + $item.Source)
+# Install ALL packaged scripts/resources, including new INSTALL.cmd and future
+# files added to the release. The updater and fresh installer share the manifest.
+# Only app/* targets belong here; plugin DLL was already installed and verified.
+$manifestSource = Join-Path $here 'update-manifest.json'
+if (-not (Test-Path -LiteralPath $manifestSource -PathType Leaf)) {
+    throw 'Complete release manifest is missing. Download the official full ZIP.'
+}
+$installManifest = Get-Content -LiteralPath $manifestSource -Raw | ConvertFrom-Json
+if ([string]$installManifest.version -cne ('v' + [string]$settings.version)) {
+    throw 'Installer manifest and release version do not match.'
+}
+$seenAppTargets = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+foreach ($item in $installManifest.files) {
+    $source = [string]$item.source
+    $target = [string]$item.target
+    $digest = [string]$item.sha256
+    $safePath = '^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$'
+    if ($source -cnotmatch $safePath -or $target -cnotmatch $safePath -or
+        $source -match '(^|/)\.\.?(/|$)' -or $target -match '(^|/)\.\.?(/|$)' -or
+        $digest -notmatch '^[A-Fa-f0-9]{64}$') {
+        throw ('Unsafe installation manifest entry: ' + $source)
     }
+    if ($target -notlike 'app/*') { continue }
+    if (-not $seenAppTargets.Add($target)) { throw ('Duplicate app file: ' + $target) }
+    $relativeSource = $source.Replace('/', [IO.Path]::DirectorySeparatorChar)
+    $sourceFile = Join-Path $here $relativeSource
+    if (-not (Test-Path -LiteralPath $sourceFile -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash -ne $digest.ToUpperInvariant()) {
+        throw ('Missing/invalid installer file: ' + $source)
+    }
+    $relativeTarget = $target.Substring(4).Replace('/', [IO.Path]::DirectorySeparatorChar)
+    $destination = Join-Path $stateDir $relativeTarget
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+    Copy-Item -LiteralPath $sourceFile -Destination $destination -Force
 }
 
 # Track the files managed by this verified release so later versions can remove
