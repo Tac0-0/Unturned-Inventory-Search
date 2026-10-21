@@ -1,17 +1,14 @@
 name: Verify v1.0 to v1.1 upgrades on Windows
 
+# Historical v1.0 -> v1.1 regression, not a test for every future release.
 on:
-  workflow_run:
-    workflows:
-      - 'Publish a complete Inventory Search release'
-    types: [completed]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   full-package-upgrade:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
