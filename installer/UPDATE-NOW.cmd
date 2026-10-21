@@ -3,38 +3,43 @@ setlocal
 cd /d "%~dp0"
 set "STATE_DIR=%LOCALAPPDATA%\InventorySearch"
 set "UPDATER=%STATE_DIR%\Update.ps1"
+set "SHIPPED_UPDATER=%~dp0Update.ps1"
 
-echo Inventory Search updater
+echo Inventory Search Updater
 echo ========================
 echo.
 
 if not exist "%STATE_DIR%\config.json" (
-  echo [ERROR] Inventory Search update configuration is missing.
-  echo Run INSTALL.cmd from the extracted installer ZIP first.
-  echo The game plugin may still be installed, but it cannot auto-update without configuration.
+  echo [ERROR] Inventory Search updater configuration is missing.
+  echo Close Unturned and run INSTALL.cmd from this extracted release ZIP first.
+  echo If v0.1.6 is already installed, this repairs updater configuration.
   set "EXITCODE=1"
   goto :done
 )
 
-if not exist "%UPDATER%" (
-  echo [INFO] The installed Update.ps1 script is missing.
-  if exist "%~dp0Update.ps1" (
-    echo [INFO] Restoring Update.ps1 from this installer folder...
-    if not exist "%STATE_DIR%" mkdir "%STATE_DIR%"
-    copy /Y "%~dp0Update.ps1" "%UPDATER%" >nul
-    if errorlevel 1 (
-      echo [ERROR] Failed to restore Update.ps1. Try running INSTALL.cmd again.
-      set "EXITCODE=1"
-      goto :done
-    )
-    echo [OK] Updater script restored.
-  ) else (
-    echo [ERROR] No updater script was found in this folder either.
-    echo Download the full installer ZIP from GitHub Releases, extract all files,
-    echo then run INSTALL.cmd to repair the installation.
+rem Replacing the installed updater engine from a LOCAL, user-extracted release
+rem lets older v0.1.6 installs fix script bugs BEFORE updating the plugin DLL.
+rem No remote scripts are downloaded or run.
+if exist "%SHIPPED_UPDATER%" (
+  echo [INFO] Refreshing installed updater script from this release package...
+  copy /Y "%SHIPPED_UPDATER%" "%UPDATER%" >nul
+  if errorlevel 1 (
+    echo [ERROR] Cannot replace installed Update.ps1.
+    echo Close Unturned and other updater windows, then try again.
     set "EXITCODE=1"
     goto :done
   )
+  echo [OK] Updater script ready.
+) else (
+  echo [WARNING] The extracted installer folder is missing Update.ps1.
+  echo Re-download and extract the official release ZIP if the updater fails.
+)
+
+if not exist "%UPDATER%" (
+  echo [ERROR] Update.ps1 is not installed or available.
+  echo Re-run INSTALL.cmd from a fully extracted release ZIP.
+  set "EXITCODE=1"
+  goto :done
 )
 
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%UPDATER%"
