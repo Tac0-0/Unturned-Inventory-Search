@@ -290,27 +290,8 @@ if ([string]::IsNullOrWhiteSpace([string]$settings.releaseRepository)) {
 Write-Host ''
 Write-Host 'DONE. Launch Unturned WITHOUT BattlEye. No server installation is required.' -ForegroundColor Green
 
-# Ask only on the player's FIRST installation. A previously saved decision,
-# including an explicit opt-out, is never overwritten during a core repair.
-$addonChoicePath = Join-Path $stateDir 'crafting-addon.json'
-if (-not (Test-Path -LiteralPath $addonChoicePath -PathType Leaf)) {
-    Write-Host ''
-    Write-Host 'Optional: SmartCraft crafting compatibility (private-server members only).'
-    Write-Host 'Inventory Search works without this add-on. The add-on is OFF by default.'
-    $enableAddon = Read-Host 'Install the optional crafting add-on? [y/N]'
-    if ([string]$enableAddon -match '^[Yy]$') {
-        try {
-            & (Join-Path $stateDir 'Manage-CraftingAddon.ps1') -Action Install
-        } catch {
-            Write-Warning ('Inventory Search installed, but optional SmartCraft add-on was NOT installed: ' + $_.Exception.Message)
-        }
-    } else {
-        @{ schemaVersion = 1; enabled = $false } |
-            ConvertTo-Json | Set-Content -LiteralPath $addonChoicePath -Encoding UTF8
-        Write-Host 'SmartCraft add-on declined. No crafting code installed.'
-    }
-} else {
-    Write-Host 'Existing SmartCraft add-on preference preserved.'
-}
-Write-Host 'You can change that choice later using Manage SmartCraft Add-on in the Start Menu.'
-Write-Host 'Or run UNINSTALL-CRAFTING.cmd to remove only the crafting add-on.'
+# Ask once during a NEW INSTALL; reinstallation keeps the old saved choice.
+# v1.2 only records intent. There is intentionally no SmartCraft DLL in v1.2.
+& (Join-Path $stateDir 'Manage-CraftingAddon.ps1') -Action PromptOptIn
+Write-Host 'Use Manage SmartCraft Add-on to change this preference later.'
+Write-Host 'UNINSTALL-CRAFTING.cmd removes ONLY the optional add-on.'
