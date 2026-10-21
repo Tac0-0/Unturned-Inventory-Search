@@ -35,6 +35,9 @@ jobs:
           extra = target / 'mod/subdir/search-theme.txt'
           extra.parent.mkdir(parents=True)
           extra.write_text('fixture for bundled future mod files\n', encoding='utf-8')
+          optional = target / 'mod/SmartCraftCraftingAddon.dll'
+          optional.write_bytes(b'CI TEST FIXTURE ONLY, NOT A REAL CRAFTING PLUGIN')
+
           PY
           python3 scripts/package-release.py 1.2.0
           (cd release-assets && sha256sum -c SHA256SUMS.txt)
@@ -50,11 +53,19 @@ jobs:
                   data = z.read(root + entry['source'])
                   assert hashlib.sha256(data).hexdigest() == entry['sha256'], entry
               assert any(e['target'] == 'plugin/subdir/search-theme.txt' for e in manifest['files'])
+              optional_entries = [e for e in manifest['files'] if e['target'] == 'plugin/SmartCraftCraftingAddon.dll']
+              assert len(optional_entries) == 1
+              assert optional_entries[0].get('optionalFeature') == 'smartcraft-crafting'
+              assert sum(1 for e in manifest['files'] if e.get('optionalFeature')) == 1
+
               assert json.loads(z.read(root + 'CONFIG.json'))['version'] == '1.2.0'
               pin = hashlib.sha256(z.read(root + 'payload/InventorySearchPrototype.dll')).hexdigest().upper()
               installer = z.read(root + 'Install.ps1').decode()
               assert pin in installer
               assert '/releases/download/v1.2.0/InventorySearchPrototype.dll' in installer
               assert root + 'Update.ps1' in files
+              for name in ('Manage-CraftingAddon.ps1', 'CRAFTING-ADDON.cmd', 'UNINSTALL-CRAFTING.cmd'):
+                  assert root + name in files
+
               print('PASS: Future v1.2.0 package contains DLL, additional mod files, updater, config and full hashes.')
           PY
