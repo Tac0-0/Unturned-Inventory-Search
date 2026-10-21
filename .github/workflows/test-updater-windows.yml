@@ -89,9 +89,10 @@ jobs:
             @('README.md','README.md')
           )) {
             $actual = (Get-FileHash (Join-Path $state $pair[0]) -Algorithm SHA256).Hash
-            $expected = (Get-FileHash (Join-Path $pwd ('installer\' + $pair[1])) -Algorithm SHA256).Hash
             if ($pair[0] -eq 'README.md') {
               $expected = (Get-FileHash 'README.md' -Algorithm SHA256).Hash
+            } else {
+              $expected = (Get-FileHash (Join-Path $pwd ('installer\' + $pair[1])) -Algorithm SHA256).Hash
             }
             if ($actual -ne $expected) { throw "App file failed to update: $($pair[0])" }
           }
