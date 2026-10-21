@@ -199,7 +199,12 @@ try {
         } else {
             Add-Member -InputObject $config -NotePropertyName installedVersion -NotePropertyValue $tag
         }
-        $config | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $configFile -Encoding UTF8
+        $configStage = Join-Path $tmpRoot 'updated-config.json'
+        $config | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $configStage -Encoding UTF8
+        $configBackup = Join-Path $tmpRoot ('backup-' + $backups.Count)
+        Copy-Item -LiteralPath $configFile -Destination $configBackup -Force
+        [void]$backups.Add([pscustomobject]@{ Destination=$configFile; Existed=$true; Backup=$configBackup })
+        Copy-Item -LiteralPath $configStage -Destination $configFile -Force
     } catch {
         $originalError = $_
         for ($i=$backups.Count-1; $i -ge 0; $i--) {
@@ -213,6 +218,13 @@ try {
             } catch { Write-Warning ('Rollback failed for ' + $item.Destination + ': ' + $_.Exception.Message) }
         }
         throw ('Update failed; attempted to restore the previous installation. ' + $originalError.Exception.Message)
+    }
+    # Keep one previous DLL for manual recovery if an updated plugin fails in-game.
+    $dllBackup = @($backups | Where-Object { $_.Destination -eq $pluginDll -and $_.Existed }) | Select-Object -First 1
+    if ($dllBackup) {
+        try {
+            Copy-Item -LiteralPath $dllBackup.Backup -Destination (Join-Path $stateDir 'InventorySearchPrototype.previous.dll') -Force
+        } catch { Write-Warning ('Could not retain optional previous-DLL backup: ' + $_.Exception.Message) }
     }
     Write-Host ('Inventory Search updated from official release: ' + $tag)
     Write-Host 'Updated plugin DLL, updater components, and release files.'
