@@ -1,0 +1,49 @@
+name: Restore archived v0.1.6 beta installer
+
+on:
+  push:
+    paths:
+      - '.github/workflows/restore-beta.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Recreate v0.1.6 package from verified historical installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Last verified beta installer revision, before v1.0.0 pinning.
+          beta_commit='5ae1eb157959fad818b7245f5128a8b99ff34736'
+          git cat-file -e "$beta_commit:installer/Install.ps1"
+          stage="$(mktemp -d)"
+          git archive "$beta_commit" installer/ | tar -x -C "$stage"
+          mv "$stage/installer" "$stage/InventorySearch-OneClick-v0.1.6-beta"
+          target="$stage/InventorySearch-OneClick-v0.1.6-beta"
+          mkdir -p "$target/payload"
+          echo '405662cb3023da2d6cdd7d5d8ef62457e624d654489da8fb729a8a3141bed515  dist/InventorySearchPrototype.dll' | sha256sum -c -
+          cp dist/InventorySearchPrototype.dll "$target/payload/InventorySearchPrototype.dll"
+          sha256sum "$target/payload/InventorySearchPrototype.dll" | cut -d' ' -f1 > "$target/payload/InventorySearchPrototype.sha256"
+          git show "$beta_commit:README.md" > "$target/README.md"
+          mkdir -p release-assets
+          (cd "$stage" && zip -q -r "$GITHUB_WORKSPACE/release-assets/InventorySearch-OneClick-v0.1.6-beta.zip" InventorySearch-OneClick-v0.1.6-beta)
+          cp dist/InventorySearchPrototype.dll release-assets/InventorySearchPrototype.dll
+          (cd release-assets && sha256sum InventorySearchPrototype.dll InventorySearch-OneClick-v0.1.6-beta.zip > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+          unzip -p release-assets/InventorySearch-OneClick-v0.1.6-beta.zip InventorySearch-OneClick-v0.1.6-beta/Install.ps1 | grep -q '405662CB3023DA2D6CDD7D5D8EF62457E624D654489DA8FB729A8A3141BED515'
+          unzip -p release-assets/InventorySearch-OneClick-v0.1.6-beta.zip InventorySearch-OneClick-v0.1.6-beta/CONFIG.json | grep -q '0.1.6'
+      - name: Restore v0.1.6 release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload v0.1.6-beta \
+            release-assets/InventorySearchPrototype.dll \
+            release-assets/InventorySearch-OneClick-v0.1.6-beta.zip \
+            release-assets/SHA256SUMS.txt --clobber
