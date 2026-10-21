@@ -1,6 +1,6 @@
 {
   "project": "Unturned Inventory Search",
-  "version": "0.1.6",
+  "version": "1.0.0",
   "releaseRepository": "Tac0-0/Unturned-Inventory-Search",
   "releaseAsset": "InventorySearchPrototype.dll",
   "bepInExVersion": "v5.4.23.5"
