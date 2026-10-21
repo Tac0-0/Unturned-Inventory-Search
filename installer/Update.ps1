@@ -152,19 +152,11 @@ try {
             $source = [string]$item.source
             $target = [string]$item.target
             $digest = [string]$item.sha256
-            # The SmartCraft DLL is optional and may NEVER be installed by merely
-            # appearing in the otherwise mandatory full-package release manifest.
-            $optionalCrafting = $false
-            if ($item.PSObject.Properties['optionalFeature']) {
-                if ([string]$item.optionalFeature -cne 'smartcraft-crafting' -or
-                    $target -cne 'plugin/SmartCraftCraftingAddon.dll') {
-                    throw ('Unknown optional release feature: ' + $source)
-                }
-                $optionalCrafting = $true
-                $foundCraftingAddon = $true
-            }
-            if ($target -ceq 'plugin/SmartCraftCraftingAddon.dll' -and -not $optionalCrafting) {
-                throw 'SmartCraft add-on cannot be a mandatory release file.'
+            # Legacy v1.0/v1.1 updaters install EVERY manifest.files entry.
+            # Fail closed if anyone puts optional features in this section.
+            if ($item.PSObject.Properties['optionalFeature'] -or
+                $target -ceq 'plugin/SmartCraftCraftingAddon.dll') {
+                throw 'Optional add-on must be in optionalFiles, not mandatory files.'
             }
             # Strict relative paths: no traversal, drive letters, whitespace tricks, or backslashes.
             $safePath = '^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$'
@@ -192,7 +184,38 @@ try {
             if ((Get-FileHash -LiteralPath $staged -Algorithm SHA256).Hash -ne $digest.ToUpperInvariant()) {
                 throw ('SHA-256 mismatch inside release package: ' + $source)
             }
-            if (-not $optionalCrafting -or $craftingAddonEnabled) {
+            [void]$files.Add([pscustomobject]@{ Destination=$dest; Staged=$staged })
+        }
+        # Optional feature files are deliberately OUTSIDE manifest.files, which
+        # prevents older client updaters from silently installing this add-on.
+        # Limit to a single exact add-on identity and independently verify its
+        # SHA-256 before any replacement of installed files.
+        foreach ($optional in @($manifest.optionalFiles)) {
+            if ($null -eq $optional) { continue }
+            $source = [string]$optional.source
+            $target = [string]$optional.target
+            $digest = [string]$optional.sha256
+            if ($source -cne 'payload/mod/SmartCraftCraftingAddon.dll' -or
+                $target -cne 'plugin/SmartCraftCraftingAddon.dll' -or
+                [string]$optional.optionalFeature -cne 'smartcraft-crafting' -or
+                $digest -notmatch '^[A-Fa-f0-9]{64}$' -or $foundCraftingAddon) {
+                throw 'Unknown, duplicated, or invalid optional SmartCraft release file.'
+            }
+            $foundCraftingAddon = $true
+            if (-not $seen.Add($target)) {
+                throw 'SmartCraft add-on was also listed in mandatory release files.'
+            }
+            $entryPath = $root + $source
+            $entries = @($zip.Entries | Where-Object { $_.FullName -ceq $entryPath })
+            if ($entries.Count -ne 1) { throw ('Missing/duplicate optional ZIP file: ' + $entryPath) }
+            if ($entries[0].Length -gt 52428800) { throw ('Oversized optional release file: ' + $entryPath) }
+            $staged = Join-Path $tmpRoot ('optional-stage-' + $files.Count)
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entries[0], $staged)
+            if ((Get-FileHash -LiteralPath $staged -Algorithm SHA256).Hash -ne $digest.ToUpperInvariant()) {
+                throw ('Optional SmartCraft SHA-256 mismatch: ' + $source)
+            }
+            if ($craftingAddonEnabled) {
+                $dest = Join-Path $pluginDir 'SmartCraftCraftingAddon.dll'
                 [void]$files.Add([pscustomobject]@{ Destination=$dest; Staged=$staged })
             }
         }
