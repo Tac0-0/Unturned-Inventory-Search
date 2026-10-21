@@ -230,6 +230,13 @@ foreach ($item in @(
     }
 }
 
+# Track the files managed by this verified release so later versions can remove
+# obsolete Inventory Search-only files while preserving every unrelated plugin.
+$manifestSource = Join-Path $here 'update-manifest.json'
+if (Test-Path -LiteralPath $manifestSource -PathType Leaf) {
+    Copy-Item -LiteralPath $manifestSource -Destination (Join-Path $stateDir 'installed-manifest.json') -Force
+}
+
 # Convenient Start Menu entry that always calls the INSTALLED, self-updating
 # launcher, never a stale UPDATE-NOW.cmd from the extracted download.
 try {
