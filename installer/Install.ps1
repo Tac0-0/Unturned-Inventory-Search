@@ -99,28 +99,37 @@ if (-not (Test-Path -LiteralPath $bepCore -PathType Leaf)) {
     if (Test-Path -LiteralPath $bepDirectory) {
         Write-Host 'Found a partial BepInEx folder. Preserving its existing contents while installing missing files.' -ForegroundColor Yellow
     }
-    Write-Host 'BepInEx 5 is missing. Downloading pinned official release...' -ForegroundColor Cyan
-    $githubHeaders = @{ 'User-Agent' = 'InventorySearch-Installer'; 'Accept' = 'application/vnd.github+json' }
-    $tag = [uri]::EscapeDataString([string]$settings.bepInExVersion)
-    $info = Invoke-RestMethod -Uri "https://api.github.com/repos/BepInEx/BepInEx/releases/tags/$tag" -Headers $githubHeaders
-    $assetName = "BepInEx_win_x64_$($settings.bepInExVersion.TrimStart('v')).zip"
-    $asset = @($info.assets | Where-Object { $_.name -eq $assetName }) | Select-Object -First 1
-    if (-not $asset -or $asset.browser_download_url -notlike 'https://github.com/BepInEx/BepInEx/releases/download/*') {
-        throw 'Expected official BepInEx asset not found.'
+    # The full release ZIP bundles BepInEx to support first-time installs even if
+    # api.github.com is blocked or the PC is offline. Never trust unverified DLLs.
+    $expectedBepHash = '82f9878551030f54657792c0740d9d51a09500eeae1fba21106b0c441e6732c4'
+    if ([string]$settings.bepInExVersion -ne 'v5.4.23.5') {
+        throw 'Installer configuration has an unsupported BepInEx version. Download the official installer again.'
     }
-    if ([string]$asset.digest -notmatch '^sha256:[0-9a-fA-F]{64}$') {
-        throw 'Official BepInEx release asset has no verifiable SHA-256 digest.'
-    }
+    $bundledBep = Join-Path $here 'payload\BepInEx_win_x64_5.4.23.5.zip'
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('InventorySearch-BepInEx-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmp | Out-Null
     try {
         $archive = Join-Path $tmp 'BepInEx.zip'
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive -UseBasicParsing
-        $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($actual -ne ([string]$asset.digest).Substring(7).ToLowerInvariant()) {
-            throw 'BepInEx download failed SHA-256 integrity verification.'
+        if (Test-Path -LiteralPath $bundledBep -PathType Leaf) {
+            Write-Host 'BepInEx 5 is missing. Using bundled official BepInEx package (no network required).' -ForegroundColor Cyan
+            Copy-Item -LiteralPath $bundledBep -Destination $archive -Force
+        } else {
+            Write-Warning 'BepInEx was not bundled (usually GitHub Code -> Download ZIP, not Releases).'
+            Write-Host 'Attempting direct download from official BepInEx GitHub release...' -ForegroundColor Cyan
+            $bepUrl = 'https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.5/BepInEx_win_x64_5.4.23.5.zip'
+            try {
+                Invoke-WebRequest -Uri $bepUrl -OutFile $archive -UseBasicParsing
+            } catch {
+                throw ('BepInEx is missing, and its official download could not be reached. ' +
+                    'Download the FULL installer ZIP from the Inventory Search GitHub Releases page (not the green Code ZIP), ' +
+                    'extract all files, and run INSTALL.cmd again. DNS/network detail: ' + $_.Exception.Message)
+            }
         }
-        # The signed/hash-verified upstream ZIP includes an optional changelog.txt,
+        $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $expectedBepHash) {
+            throw 'BepInEx package SHA-256 does not match the pinned official release. Refusing to install.'
+        }
+        # The hash-verified upstream ZIP includes an optional changelog.txt,
         # which can be locked by Windows indexing or antivirus during Expand-Archive.
         # Extract ONLY necessary runtime files via .NET and retry transient sharing violations.
         Add-Type -AssemblyName System.IO.Compression.FileSystem
