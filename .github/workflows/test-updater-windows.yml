@@ -154,11 +154,10 @@ jobs:
           Set-Content -LiteralPath (Join-Path $game 'Unturned.exe') -Value 'dummy'
           Set-Content -LiteralPath $base -Value 'KEEP-CORE-MOD'
           @{ gamePath = $game } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'config.json')
-          @"
-          param([switch] \$ForceAddonRepair)
-          if (-not \$ForceAddonRepair) { throw 'Forced add-on repair flag was not used' }
-          Set-Content -LiteralPath '$addon' -Value 'synthetic-addon'
-          "@ | Set-Content -LiteralPath (Join-Path $state 'Update.ps1')
+          $stub = 'param([switch] $ForceAddonRepair)' + [Environment]::NewLine +
+                  'if (-not $ForceAddonRepair) { throw "Forced add-on repair flag was not used" }' + [Environment]::NewLine +
+                  "Set-Content -LiteralPath '$addon' -Value 'synthetic-addon'"
+          Set-Content -LiteralPath (Join-Path $state 'Update.ps1') -Value $stub
           & ./installer/Manage-CraftingAddon.ps1 -Action Install
           if (-not (Test-Path $addon)) { throw 'Opt-in did not install addon' }
           if (-not ((Get-Content (Join-Path $state 'crafting-addon.json') -Raw | ConvertFrom-Json).enabled)) { throw 'Opt-in was not saved' }
