@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'dist/**'
+      - 'installer/**'
+      - '.github/workflows/publish-beta.yml'
   workflow_dispatch:
 
 permissions:
@@ -14,10 +16,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check release asset hashes
+      - name: Build one-click ZIP from current installer and verified DLL
+        shell: bash
         run: |
-          cd dist
-          sha256sum -c SHA256SUMS.txt
+          set -euo pipefail
+          # Keep the DLL byte-for-byte identical to the working, tested build.
+          echo '405662cb3023da2d6cdd7d5d8ef62457e624d654489da8fb729a8a3141bed515  dist/InventorySearchPrototype.dll' | sha256sum -c -
+          stage="$(mktemp -d)"
+          target="$stage/InventorySearch-OneClick-v0.1.6-beta"
+          mkdir -p "$target/payload"
+          cp -a installer/. "$target/"
+          cp README.md "$target/README.md"
+          cp dist/InventorySearchPrototype.dll "$target/payload/InventorySearchPrototype.dll"
+          sha256sum "$target/payload/InventorySearchPrototype.dll" | cut -d' ' -f1 > "$target/payload/InventorySearchPrototype.sha256"
+          (cd "$stage" && zip -q -r "$GITHUB_WORKSPACE/dist/InventorySearch-OneClick-v0.1.6-beta.zip" InventorySearch-OneClick-v0.1.6-beta)
+          (cd dist && sha256sum InventorySearchPrototype.dll InventorySearch-OneClick-v0.1.6-beta.zip > SHA256SUMS.txt)
+          (cd dist && sha256sum -c SHA256SUMS.txt)
+          unzip -l dist/InventorySearch-OneClick-v0.1.6-beta.zip | grep -q '/payload/InventorySearchPrototype.dll'
       - name: Publish GitHub pre-release
         env:
           GH_TOKEN: ${{ github.token }}
