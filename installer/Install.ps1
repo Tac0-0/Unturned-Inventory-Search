@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $settings = Get-Content -LiteralPath (Join-Path $here 'CONFIG.json') -Raw | ConvertFrom-Json
-# Pin the SHA-256 of the already-tested v0.1.6 DLL. Never trust a missing/broken local payload.
+# Pin the SHA-256 of the tested v1.0.0 DLL. Never trust a missing/broken local payload.
 $expectedHash = 'A45DF1EE2202B05A20CDAF98BBFDBD8AD016113E7536381E9A9CB30F072AEFC2'
 $hashFile = Join-Path $here 'payload\InventorySearchPrototype.sha256'
 if (Test-Path -LiteralPath $hashFile -PathType Leaf) {
@@ -205,9 +205,45 @@ $state = @{
     gamePath = $UnturnedDir
     repository = [string]$settings.releaseRepository
     assetName = [string]$settings.releaseAsset
+    installedVersion = ('v' + [string]$settings.version)
 } | ConvertTo-Json -Depth 4
 Set-Content -LiteralPath (Join-Path $stateDir 'config.json') -Value $state -Encoding UTF8
-Copy-Item -LiteralPath (Join-Path $here 'Update.ps1') -Destination (Join-Path $stateDir 'Update.ps1') -Force
+
+# Install and maintain the entire client updater package in a permanent per-user
+# location. The downloaded ZIP can be deleted; future releases update these files.
+foreach ($item in @(
+    @{ Source='Update.ps1'; Target='Update.ps1' },
+    @{ Source='UPDATE-NOW.cmd'; Target='UPDATE-NOW.cmd' },
+    @{ Source='UNINSTALL.cmd'; Target='UNINSTALL.cmd' },
+    @{ Source='Uninstall.ps1'; Target='Uninstall.ps1' },
+    @{ Source='Install.ps1'; Target='Install.ps1' },
+    @{ Source='CONFIG.json'; Target='package-CONFIG.json' },
+    @{ Source='README.md'; Target='README.md' }
+)) {
+    $sourceFile = Join-Path $here $item.Source
+    if (Test-Path -LiteralPath $sourceFile -PathType Leaf) {
+        Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $stateDir $item.Target) -Force
+    } elseif ($item.Source -eq 'README.md') {
+        Write-Warning 'Installer README missing; updater will fetch it on a future release.'
+    } else {
+        throw ('Required installer component missing: ' + $item.Source)
+    }
+}
+
+# Convenient Start Menu entry that always calls the INSTALLED, self-updating
+# launcher, never a stale UPDATE-NOW.cmd from the extracted download.
+try {
+    $startFolder = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Inventory Search'
+    New-Item -ItemType Directory -Path $startFolder -Force | Out-Null
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut((Join-Path $startFolder 'Check for Updates.lnk'))
+    $shortcut.TargetPath = Join-Path $stateDir 'UPDATE-NOW.cmd'
+    $shortcut.WorkingDirectory = $stateDir
+    $shortcut.Description = 'Check and install complete Inventory Search updates'
+    $shortcut.Save()
+} catch {
+    Write-Warning ('Unable to create optional Start Menu shortcut: ' + $_.Exception.Message)
+}
 
 if ([string]::IsNullOrWhiteSpace([string]$settings.releaseRepository)) {
     Write-Warning 'Automatic updates are not configured yet: the mod needs an official GitHub Releases repository.'
