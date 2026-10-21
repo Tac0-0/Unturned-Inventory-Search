@@ -100,7 +100,7 @@ namespace SmartCraft.Server
 
                 // Never intercept recipes that themselves explicitly use a bundle ID.
                 foreach (BlueprintSupply s in originals)
-                    if (s.id == Scrap10 || s.id == Scrap100) return;
+                    if ((s.FindItemAsset() != null && (s.FindItemAsset().id == Scrap10 || s.FindItemAsset().id == Scrap100))) return;
 
                 PlayerInventory inventory = crafting.player.inventory;
                 int loose = Count(inventory, Scrap);
@@ -111,7 +111,7 @@ namespace SmartCraft.Server
                 int totalScrapRequired = 0;
                 foreach (BlueprintSupply s in originals)
                 {
-                    if (s.id != Scrap) continue;
+                    if ((s.FindItemAsset() == null || s.FindItemAsset().id != Scrap)) continue;
                     if (!s.ShouldConsume || s.CountingMethod != ECraftingInputCountingMethod.TotalItems)
                         return;
                     totalScrapRequired += s.amount;
@@ -127,7 +127,7 @@ namespace SmartCraft.Server
                 int looseRemaining = loose;
                 foreach (BlueprintSupply original in originals)
                 {
-                    if (original.id != Scrap) { inputs.Add(original); continue; }
+                    if ((original.FindItemAsset() == null || original.FindItemAsset().id != Scrap)) { inputs.Add(original); continue; }
                     int thisLoose = Math.Min(original.amount, looseRemaining);
                     looseRemaining -= thisLoose;
                     if (thisLoose > 0)
