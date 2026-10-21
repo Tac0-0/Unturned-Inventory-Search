@@ -1,10 +1,9 @@
-name: Test v0.1.6 to v1.0.0 updater on Windows
+name: Test full-package self-updater on Windows
 
 on:
   push:
     paths:
-      - 'installer/Update.ps1'
-      - 'installer/UPDATE-NOW.cmd'
+      - 'installer/**'
       - '.github/workflows/test-updater-windows.yml'
   workflow_dispatch:
 
@@ -12,47 +11,98 @@ permissions:
   contents: read
 
 jobs:
-  updater-test:
+  full-package-updater:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test actual Windows PowerShell 5.1 updater with a dummy Unturned installation
+      - name: Install v1.0.0 from published full ZIP on Windows PowerShell 5.1
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $game = Join-Path $env:RUNNER_TEMP 'Unturned-Update-Test'
+          $zipPath = Join-Path $env:RUNNER_TEMP 'v1.zip'
+          $url = 'https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.0.0/InventorySearch-OneClick-v1.0.0.zip'
+          Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zipPath
+          $repo = Invoke-RestMethod -Uri 'https://api.github.com/repos/Tac0-0/Unturned-Inventory-Search/releases/tags/v1.0.0'
+          $asset = @($repo.assets | Where-Object { $_.name -eq 'InventorySearch-OneClick-v1.0.0.zip' })[0]
+          if ((Get-FileHash $zipPath -Algorithm SHA256).Hash -ne $asset.digest.Substring(7).ToUpperInvariant()) {
+            throw 'ZIP release asset checksum mismatch'
+          }
+          $extract = Join-Path $env:RUNNER_TEMP 'v1-extracted'
+          Expand-Archive -LiteralPath $zipPath -DestinationPath $extract -Force
+          $package = Join-Path $extract 'InventorySearch-OneClick-v1.0.0'
+          $manifest = Get-Content -LiteralPath (Join-Path $package 'update-manifest.json') -Raw | ConvertFrom-Json
+          if ($manifest.version -ne 'v1.0.0' -or @($manifest.files).Count -lt 7) { throw 'Manifest missing expected complete package' }
+          $game = Join-Path $env:RUNNER_TEMP 'DummyUnturned'
           $plugin = Join-Path $game 'BepInEx\plugins\InventorySearchPrototype'
-          New-Item -ItemType Directory -Force -Path $plugin | Out-Null
-          Set-Content -LiteralPath (Join-Path $game 'Unturned.exe') -Value 'test-only dummy executable'
-          $target = Join-Path $plugin 'InventorySearchPrototype.dll'
-          Copy-Item -LiteralPath 'dist\InventorySearchPrototype.dll' -Destination $target
+          New-Item -ItemType Directory -Path $plugin -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $game 'BepInEx\core') -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $game 'Unturned_Data\Managed') -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $game 'Unturned.exe') -Value 'dummy'
+          Set-Content -LiteralPath (Join-Path $game 'BepInEx\core\BepInEx.dll') -Value 'dummy'
+          Set-Content -LiteralPath (Join-Path $game 'Unturned_Data\Managed\Assembly-CSharp.dll') -Value 'dummy'
+          & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $package 'Install.ps1') -UnturnedDir $game
+          if ($LASTEXITCODE -ne 0) { throw 'Fresh v1.0.0 install failed' }
           $state = Join-Path $env:LOCALAPPDATA 'InventorySearch'
-          New-Item -ItemType Directory -Force -Path $state | Out-Null
-          @{
-            gamePath = $game
-            repository = 'Tac0-0/Unturned-Inventory-Search'
-            assetName = 'InventorySearchPrototype.dll'
-          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'config.json') -Encoding UTF8
-          $oldHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($oldHash -ne '405662cb3023da2d6cdd7d5d8ef62457e624d654489da8fb729a8a3141bed515') {
-            throw 'Test fixture is not the v0.1.6 DLL.'
+          foreach ($required in @('Update.ps1','UPDATE-NOW.cmd','UNINSTALL.cmd','Uninstall.ps1','Install.ps1','package-CONFIG.json','README.md')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $state $required))) { throw "Missing permanent app component: $required" }
           }
-          $log1 = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File '.\installer\Update.ps1' 2>&1 | Out-String)
+          $saved = Get-Content (Join-Path $state 'config.json') -Raw | ConvertFrom-Json
+          if ($saved.installedVersion -ne 'v1.0.0' -or $saved.gamePath -ne $game) { throw 'Incorrect installed version or game path' }
+          Write-Host 'PASS: One-time install writes durable complete updater and version state.'
+          $log = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $state 'Update.ps1') 2>&1 | Out-String)
+          Write-Host $log
+          if ($LASTEXITCODE -ne 0 -or $log -notmatch 'Inventory Search is already up to date.') {
+            throw 'Fresh install must report up-to-date'
+          }
+
+      - name: Simulate upgrading an installed v0.1.6 into COMPLETE v1.0.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $state = Join-Path $env:LOCALAPPDATA 'InventorySearch'
+          $configPath = Join-Path $state 'config.json'
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          $game = $config.gamePath
+          $target = Join-Path $game 'BepInEx\plugins\InventorySearchPrototype\InventorySearchPrototype.dll'
+          Copy-Item -LiteralPath 'dist\InventorySearchPrototype.dll' -Destination $target -Force
+          $config.installedVersion = 'v0.1.6'
+          $config | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath -Encoding UTF8
+          Set-Content -LiteralPath (Join-Path $state 'README.md') -Value 'old docs'
+          Set-Content -LiteralPath (Join-Path $state 'UPDATE-NOW.cmd') -Value '@echo off'
+          $before = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($before -ne '405662cb3023da2d6cdd7d5d8ef62457e624d654489da8fb729a8a3141bed515') {
+            throw 'Wrong old DLL'
+          }
+          $log1 = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $state 'Update.ps1') 2>&1 | Out-String)
           Write-Host $log1
-          if ($LASTEXITCODE -ne 0) { throw "First update failed with exit code $LASTEXITCODE" }
-          if ($log1 -notmatch 'Inventory Search updated from official release: v1.0.0') {
-            throw "First updater run did not report v1.0.0."
+          if ($LASTEXITCODE -ne 0 -or $log1 -notmatch 'Inventory Search updated from official release: v1.0.0') {
+            throw 'Complete-package v0.1.6 -> v1.0.0 update failed'
           }
-          $newHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($newHash -ne 'a45df1ee2202b05a20cdaf98bbfdbd8ad016113e7536381e9a9cb30f072aefc2') {
-            throw "Installed DLL hash mismatch after update: $newHash"
+          $after = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($after -ne 'a45df1ee2202b05a20cdaf98bbfdbd8ad016113e7536381e9a9cb30f072aefc2') {
+            throw "Wrong updated DLL: $after"
           }
-          $backupHash = (Get-FileHash -LiteralPath (Join-Path $state 'InventorySearchPrototype.previous.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($backupHash -ne $oldHash) { throw 'Backup does not match original v0.1.6 DLL' }
-          $log2 = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File '.\installer\Update.ps1' 2>&1 | Out-String)
+          foreach ($pair in @(
+            @('Update.ps1','Update.ps1'),
+            @('UPDATE-NOW.cmd','UPDATE-NOW.cmd'),
+            @('Install.ps1','Install.ps1'),
+            @('README.md','README.md')
+          )) {
+            $actual = (Get-FileHash (Join-Path $state $pair[0]) -Algorithm SHA256).Hash
+            $expected = (Get-FileHash (Join-Path $pwd ('installer\' + $pair[1])) -Algorithm SHA256).Hash
+            if ($pair[0] -eq 'README.md') {
+              $expected = (Get-FileHash 'README.md' -Algorithm SHA256).Hash
+            }
+            if ($actual -ne $expected) { throw "App file failed to update: $($pair[0])" }
+          }
+          $backupHash = (Get-FileHash (Join-Path $state 'InventorySearchPrototype.previous.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($backupHash -ne $before) { throw 'Previous DLL backup missing or invalid' }
+          $saved = Get-Content $configPath -Raw | ConvertFrom-Json
+          if ($saved.installedVersion -ne 'v1.0.0') { throw 'Version marker not updated' }
+          if ($saved.gamePath -ne $game) { throw 'Game path not preserved' }
+          $log2 = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $state 'Update.ps1') 2>&1 | Out-String)
           Write-Host $log2
-          if ($LASTEXITCODE -ne 0) { throw "Second update failed with exit code $LASTEXITCODE" }
-          if ($log2 -notmatch 'Inventory Search is already up to date') {
-            throw "Second updater run did not report up-to-date."
+          if ($LASTEXITCODE -ne 0 -or $log2 -notmatch 'Inventory Search is already up to date.') {
+            throw 'Idempotent second check failed'
           }
-          Write-Host 'PASS: v0.1.6 -> v1.0.0 -> already-up-to-date. Backup verified.'
+          Write-Host 'PASS: Entire mod, updater, launcher, docs, backup and version state upgraded. Repeat check works.'
