@@ -172,15 +172,28 @@ try {
         $zip.Dispose()
     }
 
-    # Retire ONLY files the previous release explicitly owned, never arbitrary
-    # game files. The previous manifest is stored by the one-time installer.
+    # Retire ONLY paths previously listed in our installed ownership manifest.
     $previousManifestPath = Join-Path $stateDir 'installed-manifest.json'
     $obsolete = New-Object 'System.Collections.Generic.List[string]'
     if (Test-Path -LiteralPath $previousManifestPath -PathType Leaf) {
         $oldManifest = Get-Content -LiteralPath $previousManifestPath -Raw | ConvertFrom-Json
         foreach ($previous in @($oldManifest.files)) {
             $oldTarget = [string]$previous.target
-            $safeOld = '^(app|plugin)/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*
+            $safeOld = '^(app|plugin)/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$'
+            if ($oldTarget -cnotmatch $safeOld -or $oldTarget -match '(^|/)\.\.?(/|$)') {
+                throw 'Previous installed-file manifest has an unsafe path. No files changed.'
+            }
+            if (-not $seen.Contains($oldTarget)) {
+                $pieces = $oldTarget.Split('/')
+                $relative = [string]::Join([IO.Path]::DirectorySeparatorChar.ToString(), $pieces[1..($pieces.Length-1)])
+                $baseDir = if ($pieces[0] -ceq 'app') { $stateDir } else { $pluginDir }
+                [void]$obsolete.Add((Join-Path $baseDir $relative))
+            }
+        }
+    }
+
+    if (Get-Process -Name Unturned -ErrorAction SilentlyContinue) {
+        Write-Host 'Unturned opened during download. No files replaced. Try after closing it.'
         exit 0
     }
 
