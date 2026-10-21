@@ -16,6 +16,8 @@ A lightweight, **client-side** inventory search mod for [Unturned](https://store
 
 **Want to remove it?** Run **`UNINSTALL.cmd`** from the extracted folder. The installer and uninstaller were tested on one Windows laptop.
 
+**Install says “extract ZIP first” even though you already did?** Use the [installer ZIP linked above](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v0.1.6-beta/InventorySearch-OneClick-v0.1.6-beta.zip), **not** GitHub's green `Code → Download ZIP`. The patched installer can recover a missing DLL by downloading the official release asset and checking its SHA-256. If that still fails, check Windows Security → Protection history for a quarantined `InventorySearchPrototype.dll` and share the exact error output. Don't disable antivirus to install this mod.
+
 > This is a BepInEx client mod, not an automatic Steam Workshop download. The automatic updater is included but has **not been tested with a future release yet**.
 
 ## Features
