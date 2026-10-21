@@ -7,18 +7,34 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $settings = Get-Content -LiteralPath (Join-Path $here 'CONFIG.json') -Raw | ConvertFrom-Json
-$dllSource = Join-Path $here 'payload\InventorySearchPrototype.dll'
-if (-not (Test-Path -LiteralPath $dllSource -PathType Leaf)) {
-    throw 'Missing payload\InventorySearchPrototype.dll. Extract the complete release ZIP before running INSTALL.cmd.'
-}
-# Verify the bundled DLL before modifying game files.
+# Pin the SHA-256 of the already-tested v0.1.6 DLL. Never trust a missing/broken local payload.
+$expectedHash = '405662CB3023DA2D6CDD7D5D8EF62457E624D654489DA8FB729A8A3141BED515'
 $hashFile = Join-Path $here 'payload\InventorySearchPrototype.sha256'
-if (-not (Test-Path -LiteralPath $hashFile -PathType Leaf)) {
-    throw 'Missing bundled SHA-256 file. Download the complete release again.'
+if (Test-Path -LiteralPath $hashFile -PathType Leaf) {
+    $bundledHash = (Get-Content -LiteralPath $hashFile -Raw).Trim().ToUpperInvariant()
+    if ($bundledHash -ne $expectedHash) {
+        throw 'Bundled DLL checksum metadata disagrees with this verified release. Download a clean copy from GitHub Releases.'
+    }
 }
-$expectedHash = (Get-Content -LiteralPath $hashFile -Raw).Trim().ToUpperInvariant()
-if ($expectedHash -notmatch '^[A-F0-9]{64}$' -or (Get-FileHash -LiteralPath $dllSource -Algorithm SHA256).Hash -ne $expectedHash) {
-    throw 'InventorySearchPrototype.dll failed the release SHA-256 integrity check. Nothing was installed.'
+$dllSource = Join-Path $here 'payload\InventorySearchPrototype.dll'
+$recoveryPath = $null
+if (-not (Test-Path -LiteralPath $dllSource -PathType Leaf)) {
+    Write-Warning 'The installer DLL is missing. This may be a GitHub source-code ZIP, incomplete extraction, or antivirus quarantine.'
+    Write-Host 'Downloading the tested DLL from the official v0.1.6-beta GitHub release...' -ForegroundColor Cyan
+    $recoveryPath = Join-Path ([IO.Path]::GetTempPath()) ('InventorySearch-' + [guid]::NewGuid().ToString('N') + '.dll')
+    $downloadUrl = 'https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v0.1.6-beta/InventorySearchPrototype.dll'
+    try {
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $recoveryPath -UseBasicParsing
+        $dllSource = $recoveryPath
+    } catch {
+        Remove-Item -LiteralPath $recoveryPath -Force -ErrorAction SilentlyContinue
+        throw ('Could not download the missing DLL from the official GitHub release: ' + $_.Exception.Message + '. Check antivirus protection/quarantine or download the one-click release ZIP.')
+    }
+}
+$actualDllHash = (Get-FileHash -LiteralPath $dllSource -Algorithm SHA256).Hash.ToUpperInvariant()
+if ($actualDllHash -ne $expectedHash) {
+    if ($recoveryPath) { Remove-Item -LiteralPath $recoveryPath -Force -ErrorAction SilentlyContinue }
+    throw 'InventorySearchPrototype.dll failed the pinned SHA-256 integrity check. Installation stopped; verify the official download and antivirus quarantine.'
 }
 
 function Find-Unturned {
@@ -135,6 +151,7 @@ if ((Get-FileHash $dllSource -Algorithm SHA256).Hash -ne (Get-FileHash $installe
 }
 Write-Host "Inventory Search installed in: $pluginDirectory" -ForegroundColor Green
 Write-Host "Verified DLL SHA-256: $expectedHash"
+if ($recoveryPath) { Remove-Item -LiteralPath $recoveryPath -Force -ErrorAction SilentlyContinue }
 
 # Per-user updater installation. No elevated permissions and no other mod changes.
 $stateDir = Join-Path $env:LOCALAPPDATA 'InventorySearch'
