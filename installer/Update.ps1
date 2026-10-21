@@ -288,6 +288,12 @@ try {
         foreach ($file in $files) {
             $dest = [string]$file.Destination
             $existed = Test-Path -LiteralPath $dest -PathType Leaf
+            if ($existed -and
+                (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -eq
+                (Get-FileHash -LiteralPath $file.Staged -Algorithm SHA256).Hash) {
+                # Preserve timestamps and avoid rewriting files that already match.
+                continue
+            }
             $backup = Join-Path $tmpRoot ('backup-' + $backups.Count)
             if ($existed) { Copy-Item -LiteralPath $dest -Destination $backup -Force }
             [void]$backups.Add([pscustomobject]@{ Destination=$dest; Existed=$existed; Backup=$backup })
