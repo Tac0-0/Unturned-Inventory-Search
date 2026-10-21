@@ -172,6 +172,103 @@ try {
         $zip.Dispose()
     }
 
+    # Retire ONLY files the previous release explicitly owned, never arbitrary
+    # game files. The previous manifest is stored by the one-time installer.
+    $previousManifestPath = Join-Path $stateDir 'installed-manifest.json'
+    $obsolete = New-Object 'System.Collections.Generic.List[string]'
+    if (Test-Path -LiteralPath $previousManifestPath -PathType Leaf) {
+        $oldManifest = Get-Content -LiteralPath $previousManifestPath -Raw | ConvertFrom-Json
+        foreach ($previous in @($oldManifest.files)) {
+            $oldTarget = [string]$previous.target
+            $safeOld = '^(app|plugin)/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*
+        exit 0
+    }
+
+    # Stage and authenticate everything FIRST, then replace managed files with rollback.
+    $backups = New-Object 'System.Collections.Generic.List[object]'
+    try {
+        foreach ($file in $files) {
+            $dest = [string]$file.Destination
+            $existed = Test-Path -LiteralPath $dest -PathType Leaf
+            $backup = Join-Path $tmpRoot ('backup-' + $backups.Count)
+            if ($existed) { Copy-Item -LiteralPath $dest -Destination $backup -Force }
+            [void]$backups.Add([pscustomobject]@{ Destination=$dest; Existed=$existed; Backup=$backup })
+            New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
+            Copy-Item -LiteralPath $file.Staged -Destination $dest -Force
+            if ((Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -ne
+                (Get-FileHash -LiteralPath $file.Staged -Algorithm SHA256).Hash) {
+                throw ('Post-install checksum mismatch: ' + $dest)
+            }
+        }
+        foreach ($obsoletePath in ($obsolete | Select-Object -Unique)) {
+            if (-not (Test-Path -LiteralPath $obsoletePath -PathType Leaf)) { continue }
+            $backup = Join-Path $tmpRoot ('backup-' + $backups.Count)
+            Copy-Item -LiteralPath $obsoletePath -Destination $backup -Force
+            [void]$backups.Add([pscustomobject]@{ Destination=$obsoletePath; Existed=$true; Backup=$backup })
+            Remove-Item -LiteralPath $obsoletePath -Force
+        }
+        # Save the exact new file ownership manifest as part of the same transaction.
+        $manifestBackup = Join-Path $tmpRoot ('backup-' + $backups.Count)
+        $hadManifest = Test-Path -LiteralPath $previousManifestPath -PathType Leaf
+        if ($hadManifest) { Copy-Item -LiteralPath $previousManifestPath -Destination $manifestBackup -Force }
+        [void]$backups.Add([pscustomobject]@{ Destination=$previousManifestPath; Existed=$hadManifest; Backup=$manifestBackup })
+        $manifestStage = Join-Path $tmpRoot 'new-installed-manifest.json'
+        Set-Content -LiteralPath $manifestStage -Value $manifestText -Encoding UTF8
+        Copy-Item -LiteralPath $manifestStage -Destination $previousManifestPath -Force
+
+        # Preserve install-specific gamePath/repository config, only update version marker.
+        if ($config.PSObject.Properties['installedVersion']) {
+            $config.installedVersion = $tag
+        } else {
+            Add-Member -InputObject $config -NotePropertyName installedVersion -NotePropertyValue $tag
+        }
+        $configStage = Join-Path $tmpRoot 'updated-config.json'
+        $config | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $configStage -Encoding UTF8
+        $configBackup = Join-Path $tmpRoot ('backup-' + $backups.Count)
+        Copy-Item -LiteralPath $configFile -Destination $configBackup -Force
+        [void]$backups.Add([pscustomobject]@{ Destination=$configFile; Existed=$true; Backup=$configBackup })
+        Copy-Item -LiteralPath $configStage -Destination $configFile -Force
+    } catch {
+        $originalError = $_
+        for ($i=$backups.Count-1; $i -ge 0; $i--) {
+            $item = $backups[$i]
+            try {
+                if ($item.Existed) {
+                    Copy-Item -LiteralPath $item.Backup -Destination $item.Destination -Force
+                } else {
+                    Remove-Item -LiteralPath $item.Destination -Force -ErrorAction SilentlyContinue
+                }
+            } catch { Write-Warning ('Rollback failed for ' + $item.Destination + ': ' + $_.Exception.Message) }
+        }
+        throw ('Update failed; attempted to restore the previous installation. ' + $originalError.Exception.Message)
+    }
+    # Keep one previous DLL for manual recovery if an updated plugin fails in-game.
+    $dllBackup = @($backups | Where-Object { $_.Destination -eq $pluginDll -and $_.Existed }) | Select-Object -First 1
+    if ($dllBackup) {
+        try {
+            Copy-Item -LiteralPath $dllBackup.Backup -Destination (Join-Path $stateDir 'InventorySearchPrototype.previous.dll') -Force
+        } catch { Write-Warning ('Could not retain optional previous-DLL backup: ' + $_.Exception.Message) }
+    }
+    Write-Host ('Inventory Search updated from official release: ' + $tag)
+    Write-Host 'Updated plugin DLL, updater components, and release files.'
+} finally {
+    if ($tmpRoot) { Remove-Item -LiteralPath $tmpRoot -Force -Recurse -ErrorAction SilentlyContinue }
+    if ($locked) { $mutex.ReleaseMutex() }
+    $mutex.Dispose()
+}
+
+            if ($oldTarget -cnotmatch $safeOld -or $oldTarget -match '(^|/)\.\.?(/|$)') {
+                throw 'Previous installed-file manifest has an unsafe path. No files changed.'
+            }
+            if (-not $seen.Contains($oldTarget)) {
+                $parts = $oldTarget.Split('/')
+                $relative = [string]::Join([IO.Path]::DirectorySeparatorChar.ToString(), $parts[1..($parts.Length-1)])
+                $baseDir = if ($parts[0] -ceq 'app') { $stateDir } else { $pluginDir }
+                [void]$obsolete.Add((Join-Path $baseDir $relative))
+            }
+        }
+    }
+
     if (Get-Process -Name Unturned -ErrorAction SilentlyContinue) {
         Write-Host 'Unturned opened during download. No files replaced. Try after closing it.'
         exit 0
