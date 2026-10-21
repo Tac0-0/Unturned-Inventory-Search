@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'dist/v1.0.0/**'
+      - 'installer/**'
+      - '.github/workflows/publish-v1.yml'
   workflow_dispatch:
 
 permissions:
@@ -43,6 +45,8 @@ jobs:
           cp dist/v1.0.0/InventorySearchPrototype.dll release-assets/InventorySearchPrototype.dll
           (cd release-assets && sha256sum InventorySearchPrototype.dll InventorySearch-OneClick-v1.0.0.zip > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
           unzip -l release-assets/InventorySearch-OneClick-v1.0.0.zip | grep -q '/payload/InventorySearchPrototype.dll'
+          grep -q 'Add-InventorySearchRelease' "$target/Update.ps1"
+          grep -q 'Refreshing installed updater script' "$target/UPDATE-NOW.cmd"
       - name: Publish stable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
