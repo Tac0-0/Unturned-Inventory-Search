@@ -218,7 +218,10 @@ foreach ($item in @(
     @{ Source='Uninstall.ps1'; Target='Uninstall.ps1' },
     @{ Source='Install.ps1'; Target='Install.ps1' },
     @{ Source='CONFIG.json'; Target='package-CONFIG.json' },
-    @{ Source='README.md'; Target='README.md' }
+    @{ Source='README.md'; Target='README.md' },
+    @{ Source='Manage-CraftingAddon.ps1'; Target='Manage-CraftingAddon.ps1' },
+    @{ Source='CRAFTING-ADDON.cmd'; Target='CRAFTING-ADDON.cmd' },
+    @{ Source='UNINSTALL-CRAFTING.cmd'; Target='UNINSTALL-CRAFTING.cmd' }
 )) {
     $sourceFile = Join-Path $here $item.Source
     if (Test-Path -LiteralPath $sourceFile -PathType Leaf) {
@@ -248,6 +251,16 @@ try {
     $shortcut.WorkingDirectory = $stateDir
     $shortcut.Description = 'Check and install complete Inventory Search updates'
     $shortcut.Save()
+    $addonShortcut = $shell.CreateShortcut((Join-Path $startFolder 'Manage SmartCraft Add-on.lnk'))
+    $addonShortcut.TargetPath = Join-Path $stateDir 'CRAFTING-ADDON.cmd'
+    $addonShortcut.WorkingDirectory = $stateDir
+    $addonShortcut.Description = 'Install or remove optional SmartCraft crafting support'
+    $addonShortcut.Save()
+    $removeShortcut = $shell.CreateShortcut((Join-Path $startFolder 'Uninstall SmartCraft Add-on.lnk'))
+    $removeShortcut.TargetPath = Join-Path $stateDir 'UNINSTALL-CRAFTING.cmd'
+    $removeShortcut.WorkingDirectory = $stateDir
+    $removeShortcut.Description = 'Remove only SmartCraft crafting support'
+    $removeShortcut.Save()
 } catch {
     Write-Warning ('Unable to create optional Start Menu shortcut: ' + $_.Exception.Message)
 }
@@ -276,3 +289,28 @@ if ([string]::IsNullOrWhiteSpace([string]$settings.releaseRepository)) {
 }
 Write-Host ''
 Write-Host 'DONE. Launch Unturned WITHOUT BattlEye. No server installation is required.' -ForegroundColor Green
+
+# Ask only on the player's FIRST installation. A previously saved decision,
+# including an explicit opt-out, is never overwritten during a core repair.
+$addonChoicePath = Join-Path $stateDir 'crafting-addon.json'
+if (-not (Test-Path -LiteralPath $addonChoicePath -PathType Leaf)) {
+    Write-Host ''
+    Write-Host 'Optional: SmartCraft crafting compatibility (private-server members only).'
+    Write-Host 'Inventory Search works without this add-on. The add-on is OFF by default.'
+    $enableAddon = Read-Host 'Install the optional crafting add-on? [y/N]'
+    if ([string]$enableAddon -match '^[Yy]) {
+        try {
+            & (Join-Path $stateDir 'Manage-CraftingAddon.ps1') -Action Install
+        } catch {
+            Write-Warning ('Inventory Search installed, but optional SmartCraft add-on was NOT installed: ' + $_.Exception.Message)
+        }
+    } else {
+        @{ schemaVersion = 1; enabled = $false } |
+            ConvertTo-Json | Set-Content -LiteralPath $addonChoicePath -Encoding UTF8
+        Write-Host 'SmartCraft add-on declined. No crafting code installed.'
+    }
+} else {
+    Write-Host 'Existing SmartCraft add-on preference preserved.'
+}
+Write-Host 'You can change that choice later using Manage SmartCraft Add-on in the Start Menu.'
+Write-Host 'Or run UNINSTALL-CRAFTING.cmd to remove only the crafting add-on.'
