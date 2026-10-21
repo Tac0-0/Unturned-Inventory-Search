@@ -1,0 +1,4 @@
+Inventory Search v1.1.0
+This text file is intentionally included with the mod to verify FULL-PACKAGE updates.
+A correct full-package update installs it next to InventorySearchPrototype.dll.
+This file has no gameplay behavior and can safely be removed by later releases.
