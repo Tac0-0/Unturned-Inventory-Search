@@ -2,6 +2,8 @@
 // Never changes item IDs, recipe definitions, or artwork.
 // Requires a compatible SmartCraft server. Not part of stable v1.2 releases.
 using System;
+using System.Collections;
+using System.Reflection;
 using BepInEx;
 using HarmonyLib;
 using SDG.Unturned;
@@ -59,68 +61,94 @@ namespace SmartCraft.Client
             return total;
         }
 
-        // p is the SAME UpdateBlueprintStatusParameters struct used by vanilla
-        // crafting. Postfix adjusts status after the game's normal search.
-        // Critical failure status is recalculated from genuine input rows.
-        private static void Postfix(PlayerCrafting __instance,
-            ref UpdateBlueprintStatusParameters p,
-            BlueprintSupply inputItemConfig,
-            BlueprintInputItemStatus inputItemStatus,
-            ItemJar itemToIgnore,
-            ref bool __result)
+        // Unturned deliberately marks its status classes INTERNAL. Harmony's
+        // __args is the safe ABI here, while cached FieldInfo restricts access
+        // to just the quantities and missing flags we need.
+        private static readonly Type ParametersType =
+            typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.UpdateBlueprintStatusParameters");
+        private static readonly FieldInfo ParamStatus =
+            ParametersType == null ? null :
+            AccessTools.Field(ParametersType, "status");
+        private static readonly Type StatusType =
+            typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.BlueprintStatus");
+        private static readonly FieldInfo StatusBlueprint =
+            StatusType == null ? null : AccessTools.Field(StatusType, "blueprint");
+        private static readonly FieldInfo MissingCount =
+            StatusType == null ? null : AccessTools.Field(StatusType, "totalMissingInputItemsCount");
+        private static readonly FieldInfo CriticalMissing =
+            StatusType == null ? null : AccessTools.Field(StatusType, "isMissingAnyCriticalInputItem");
+        private static readonly FieldInfo HasAnyInput =
+            StatusType == null ? null : AccessTools.Field(StatusType, "hasAnyInputItem");
+        private static readonly FieldInfo InputStatuses =
+            StatusType == null ? null : AccessTools.Field(StatusType, "inputItems");
+        private static readonly Type InputStatusType =
+            typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.BlueprintInputItemStatus");
+        private static readonly FieldInfo InputTotal =
+            InputStatusType == null ? null : AccessTools.Field(InputStatusType, "totalAmount");
+        private static readonly FieldInfo InputMissing =
+            InputStatusType == null ? null : AccessTools.Field(InputStatusType, "isMissingRequiredAmount");
+
+        private static void Postfix(PlayerCrafting __instance, object[] __args, ref bool __result)
         {
-            if (__instance == null || p.status == null || inputItemConfig == null ||
-                inputItemStatus == null) return;
-            if (!inputItemConfig.ShouldConsume ||
-                inputItemConfig.CountingMethod != ECraftingInputCountingMethod.TotalItems)
-                return;
-            ItemAsset asset = inputItemConfig.FindItemAsset();
+            if (__instance == null || __args == null || __args.Length < 3 ||
+                ParamStatus == null || StatusBlueprint == null || MissingCount == null ||
+                CriticalMissing == null || HasAnyInput == null || InputStatuses == null ||
+                InputTotal == null || InputMissing == null) return;
+            BlueprintSupply inputConfig = __args[1] as BlueprintSupply;
+            object inputStatus = __args[2];
+            if (inputConfig == null || inputStatus == null || !inputConfig.ShouldConsume ||
+                inputConfig.CountingMethod != ECraftingInputCountingMethod.TotalItems) return;
+            ItemAsset asset = inputConfig.FindItemAsset();
             if (asset == null || asset.id != Scrap) return;
-            Blueprint blueprint = p.status.blueprint;
-            if (blueprint == null || blueprint.Operation != EBlueprintOperation.None ||
-                blueprint.transferState) return;
-            foreach (BlueprintSupply s in blueprint.supplies)
-                if (s.id == Scrap10 || s.id == Scrap100) return;
 
             try
             {
+                object status = ParamStatus.GetValue(__args[0]);
+                if (status == null) return;
+                Blueprint blueprint = StatusBlueprint.GetValue(status) as Blueprint;
+                if (blueprint == null || blueprint.Operation != EBlueprintOperation.None ||
+                    blueprint.transferState) return;
+                foreach (BlueprintSupply supply in blueprint.supplies)
+                    if (supply.id == Scrap10 || supply.id == Scrap100) return;
+
                 PlayerInventory inventory = __instance.player.inventory;
                 int bundleUnits = 10 * Count(inventory, Scrap10) +
                                   100 * Count(inventory, Scrap100);
                 if (bundleUnits <= 0) return;
-                int before = inputItemStatus.totalAmount;
-                int required = inputItemConfig.amount;
+                int before = (int)InputTotal.GetValue(inputStatus);
+                int required = inputConfig.amount;
                 int missingBefore = Math.Max(0, required - before);
                 int newAmount = before + bundleUnits;
                 int missingAfter = Math.Max(0, required - newAmount);
-                inputItemStatus.totalAmount = newAmount;
-                inputItemStatus.isMissingRequiredAmount = missingAfter > 0;
-                p.status.totalMissingInputItemsCount =
-                    Math.Max(0, p.status.totalMissingInputItemsCount - missingBefore + missingAfter);
-                p.status.hasAnyInputItem = true;
+                InputTotal.SetValue(inputStatus, newAmount);
+                InputMissing.SetValue(inputStatus, missingAfter > 0);
+                int currentMissing = (int)MissingCount.GetValue(status);
+                MissingCount.SetValue(status, Math.Max(0, currentMissing - missingBefore + missingAfter));
+                HasAnyInput.SetValue(status, true);
 
-                // Preserve other missing critical inputs (e.g., an Alicepack).
+                // Keep critical flags set for OTHER missing recipe ingredients.
+                IList items = InputStatuses.GetValue(status) as IList;
                 bool anyMissingCritical = false;
-                int count = Math.Min(p.status.inputItems.Count, blueprint.supplies.Length);
-                for (int i = 0; i < count; i++)
+                if (items != null)
                 {
-                    if (blueprint.supplies[i].isCritical &&
-                        p.status.inputItems[i].isMissingRequiredAmount)
+                    int n = Math.Min(items.Count, blueprint.supplies.Length);
+                    for (int i = 0; i < n; i++)
                     {
-                        anyMissingCritical = true;
-                        break;
+                        if (blueprint.supplies[i].isCritical &&
+                            (bool)InputMissing.GetValue(items[i]))
+                        {
+                            anyMissingCritical = true;
+                            break;
+                        }
                     }
                 }
-                p.status.isMissingAnyCriticalInputItem = anyMissingCritical;
-
-                // Vanilla returns true to stop scanning remaining inputs if the
-                // inventory had no item of the exact ID. Continue when bundles
-                // satisfy this input.
+                CriticalMissing.SetValue(status, anyMissingCritical);
                 if (missingAfter == 0) __result = false;
             }
             catch (Exception)
             {
-                // Leave vanilla result unchanged in case of API incompatibility.
+                // Fail closed: if Unturned's runtime ABI changes, don't invent
+                // craftable inventory quantities or suppress vanilla handling.
             }
         }
     }
