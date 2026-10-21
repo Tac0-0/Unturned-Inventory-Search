@@ -22,4 +22,6 @@ if (Test-Path -LiteralPath $target -PathType Leaf) {
 try { Unregister-ScheduledTask -TaskName 'Inventory Search Auto Update' -Confirm:$false -ErrorAction SilentlyContinue | Out-Null }
 catch { Write-Warning ('Task removal was unsuccessful: ' + $_.Exception.Message) }
 Remove-Item -LiteralPath $stateDir -Force -Recurse -ErrorAction SilentlyContinue
+$startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Inventory Search'
+Remove-Item -LiteralPath $startMenu -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host 'Uninstalled Inventory Search. BepInEx and all other mods were left untouched.'
