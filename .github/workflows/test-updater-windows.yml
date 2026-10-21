@@ -12,6 +12,10 @@ permissions:
 
 jobs:
   full-package-updater:
+    # Legacy test assumes v1.0 is the latest, so run it only when explicitly
+    # investigating historical v1.0 upgrades. Current optional-addon tests
+    # remain enabled on every installer change.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
