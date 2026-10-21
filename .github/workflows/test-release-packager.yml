@@ -1,0 +1,60 @@
+name: Test future-version full release packager
+
+on:
+  push:
+    paths:
+      - 'scripts/package-release.py'
+      - '.github/workflows/test-release-packager.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build a synthetic v1.2.0 release without publishing
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          source = pathlib.Path('dist/v1.0.0/InventorySearchPrototype.dll').read_bytes()
+          old = b'Inventory Search Prototype\x051.0.0'
+          new = b'Inventory Search Prototype\x051.2.0'
+          assert source.count(old) == 1
+          source = source.replace(old, new)
+          old_log = 'Inventory Search Prototype 1.0.0 loaded.'.encode('utf-16le')
+          new_log = 'Inventory Search Prototype 1.2.0 loaded.'.encode('utf-16le')
+          assert source.count(old_log) == 1
+          source = source.replace(old_log, new_log)
+          target = pathlib.Path('dist/v1.2.0')
+          target.mkdir(parents=True)
+          (target / 'InventorySearchPrototype.dll').write_bytes(source)
+          extra = target / 'mod/subdir/search-theme.txt'
+          extra.parent.mkdir(parents=True)
+          extra.write_text('fixture for bundled future mod files\n', encoding='utf-8')
+          PY
+          python3 scripts/package-release.py 1.2.0
+          (cd release-assets && sha256sum -c SHA256SUMS.txt)
+          python3 - <<'PY'
+          import hashlib, json, zipfile
+          with zipfile.ZipFile('release-assets/InventorySearch-OneClick-v1.2.0.zip') as z:
+              files = z.namelist()
+              root = 'InventorySearch-OneClick-v1.2.0/'
+              manifest = json.loads(z.read(root + 'update-manifest.json'))
+              assert manifest['version'] == 'v1.2.0'
+              assert manifest['schemaVersion'] == 1
+              for entry in manifest['files']:
+                  data = z.read(root + entry['source'])
+                  assert hashlib.sha256(data).hexdigest() == entry['sha256'], entry
+              assert any(e['target'] == 'plugin/subdir/search-theme.txt' for e in manifest['files'])
+              assert json.loads(z.read(root + 'CONFIG.json'))['version'] == '1.2.0'
+              pin = hashlib.sha256(z.read(root + 'payload/InventorySearchPrototype.dll')).hexdigest().upper()
+              installer = z.read(root + 'Install.ps1').decode()
+              assert pin in installer
+              assert '/releases/download/v1.2.0/InventorySearchPrototype.dll' in installer
+              assert root + 'Update.ps1' in files
+              print('PASS: Future v1.2.0 package contains DLL, additional mod files, updater, config and full hashes.')
+          PY
