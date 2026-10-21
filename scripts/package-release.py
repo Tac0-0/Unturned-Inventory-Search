@@ -89,16 +89,21 @@ with tempfile.TemporaryDirectory(prefix="inventory-search-build-") as work:
                 relative = file.relative_to(mod_dir).as_posix()
                 mappings.append(("payload/mod/" + relative, "plugin/" + relative))
     files = []
+    optional_files = []
     for src, target in mappings:
         entry = {"source": src, "target": target,
                  "sha256": hashlib.sha256((root / src).read_bytes()).hexdigest()}
         if target == "plugin/SmartCraftCraftingAddon.dll":
-            # This DLL is downloaded and hash checked but installed ONLY for
-            # players who explicitly opted into SmartCraft.
+            # OLD UPDATERS process ALL manifest.files without understanding
+            # optionalFeature. Therefore NEVER put the add-on in that array.
+            # A separate optionalFiles section is ignored by old versions.
             entry["optionalFeature"] = "smartcraft-crafting"
-        files.append(entry)
+            optional_files.append(entry)
+        else:
+            files.append(entry)
     (root / "update-manifest.json").write_text(
-        json.dumps({"schemaVersion": 1, "version": tag, "files": files}, indent=2) + "\n",
+        json.dumps({"schemaVersion": 1, "version": tag,
+                    "files": files, "optionalFiles": optional_files}, indent=2) + "\n",
         encoding="utf-8"
     )
 
