@@ -41,12 +41,43 @@ jobs:
           cp README.md "$target/README.md"
           cp dist/v1.0.0/InventorySearchPrototype.dll "$target/payload/InventorySearchPrototype.dll"
           sha256sum "$target/payload/InventorySearchPrototype.dll" | cut -d' ' -f1 > "$target/payload/InventorySearchPrototype.sha256"
+          # Versioned update manifest covers the WHOLE installed mod and its tools.
+          # Future releases may add more mod resources in payload/mod/.
+          python3 - "$target" <<'PY'
+          import hashlib, json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          mappings = [
+              ('payload/InventorySearchPrototype.dll', 'plugin/InventorySearchPrototype.dll'),
+              ('UPDATE-NOW.cmd', 'app/UPDATE-NOW.cmd'),
+              ('UNINSTALL.cmd', 'app/UNINSTALL.cmd'),
+              ('Uninstall.ps1', 'app/Uninstall.ps1'),
+              ('Install.ps1', 'app/Install.ps1'),
+              ('CONFIG.json', 'app/package-CONFIG.json'),
+              ('README.md', 'app/README.md'),
+              ('Update.ps1', 'app/Update.ps1'),
+          ]
+          for extra in sorted((root / 'payload/mod').rglob('*')) if (root / 'payload/mod').exists() else []:
+              if extra.is_file():
+                  rel = extra.relative_to(root / 'payload/mod').as_posix()
+                  mappings.append(('payload/mod/' + rel, 'plugin/' + rel))
+          files = []
+          for source, target in mappings:
+              data = (root / source).read_bytes()
+              files.append({'source': source, 'target': target, 'sha256': hashlib.sha256(data).hexdigest()})
+          (root / 'update-manifest.json').write_text(
+              json.dumps({'schemaVersion': 1, 'version': 'v1.0.0', 'files': files}, indent=2) + '\n',
+              encoding='utf-8'
+          )
+          print('Manifest verified, files:', len(files))
+          PY
           (cd "$stage" && zip -q -r "$GITHUB_WORKSPACE/release-assets/InventorySearch-OneClick-v1.0.0.zip" InventorySearch-OneClick-v1.0.0)
           cp dist/v1.0.0/InventorySearchPrototype.dll release-assets/InventorySearchPrototype.dll
           (cd release-assets && sha256sum InventorySearchPrototype.dll InventorySearch-OneClick-v1.0.0.zip > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
           unzip -l release-assets/InventorySearch-OneClick-v1.0.0.zip | grep -q '/payload/InventorySearchPrototype.dll'
-          grep -q 'Add-InventorySearchRelease' "$target/Update.ps1"
-          grep -q 'Refreshing installed updater script' "$target/UPDATE-NOW.cmd"
+          grep -q 'Collect-Releases' "$target/Update.ps1"
+          grep -q 'Never restore older scripts' "$target/UPDATE-NOW.cmd"
+          test -f "$target/update-manifest.json"
+          unzip -l release-assets/InventorySearch-OneClick-v1.0.0.zip | grep -q '/update-manifest.json'
       - name: Publish stable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
