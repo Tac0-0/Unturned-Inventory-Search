@@ -3,7 +3,7 @@
 # Windows PowerShell 5.1 compatible.
 [CmdletBinding()]
 param(
-    [ValidateSet('Prompt', 'Install', 'Uninstall', 'Status')]
+    [ValidateSet('Prompt', 'PromptOptIn', 'Install', 'Uninstall', 'Status')]
     [string]$Action = 'Prompt'
 )
 $ErrorActionPreference = 'Stop'
@@ -39,6 +39,25 @@ function Assert-GameClosed {
         throw 'Close Unturned before installing or removing the crafting add-on.'
     }
 }
+if ($Action -eq 'PromptOptIn') {
+    if (Test-Path -LiteralPath $choicePath -PathType Leaf) {
+        Write-Host 'Existing SmartCraft choice preserved. Run CRAFTING-ADDON.cmd to change it.'
+        exit 0
+    }
+    Write-Host ''
+    Write-Host 'Inventory Search v1.2: SmartCraft optional add-on preference'
+    Write-Host 'Are you a member of the private Unturned server using SmartCraft?'
+    Write-Host 'SmartCraft crafting is NOT implemented in v1.2; engine development begins in v1.3.'
+    $answer = Read-Host 'Would you like to enable SmartCraft for future releases? [y/N]'
+    if ([string]$answer -match '^[Yy]$') {
+        Save-AddonPreference $true
+        Write-Host 'SmartCraft selected for future versions. No crafting DLL is installed by v1.2.' -ForegroundColor Green
+    } else {
+        Save-AddonPreference $false
+        Write-Host 'SmartCraft declined. Inventory Search continues normally.'
+    }
+    exit 0
+}
 if ($Action -eq 'Prompt') {
     Write-Host ''
     Write-Host 'SmartCraft Crafting Add-on (optional, for private server members)'
@@ -73,6 +92,17 @@ if ($Action -eq 'Uninstall') {
     exit 0
 }
 if ($Action -eq 'Install') {
+    # v1.2 is a preference-only release. Never download a placeholder DLL or
+    # claim the crafting engine exists before the v1.3 implementation.
+    $installedVersion = [version]'0.0.0'
+    if ([string]$config.installedVersion -match '^v?(\d+)\.(\d+)\.(\d+)$') {
+        $installedVersion = [version]([string]$config.installedVersion).TrimStart('v')
+    }
+    if ($installedVersion -lt [version]'1.3.0') {
+        Save-AddonPreference $true
+        Write-Host 'SmartCraft opted in for future updates. There is no crafting DLL in v1.2.' -ForegroundColor Green
+        exit 0
+    }
     $updater = Join-Path $stateDir 'Update.ps1'
     if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) {
         throw 'Inventory Search full-package updater is missing. Reinstall the current release once.'
