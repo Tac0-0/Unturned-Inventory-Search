@@ -120,21 +120,66 @@ if (-not (Test-Path -LiteralPath $bepCore -PathType Leaf)) {
         if ($actual -ne ([string]$asset.digest).Substring(7).ToLowerInvariant()) {
             throw 'BepInEx download failed SHA-256 integrity verification.'
         }
-        $extract = Join-Path $tmp 'expanded'
-        Expand-Archive -LiteralPath $archive -DestinationPath $extract
-        if (-not (Test-Path -LiteralPath (Join-Path $extract 'BepInEx\core\BepInEx.dll'))) {
-            throw 'Downloaded BepInEx archive has an unexpected structure.'
-        }
-        # Only install files that are missing: never overwrite an existing plugin, config,
-        # or other file in an already-modded installation.
-        $archiveRoot = (Resolve-Path -LiteralPath $extract).Path
-        Get-ChildItem -LiteralPath $extract -Recurse -File | ForEach-Object {
-            $relativePath = $_.FullName.Substring($archiveRoot.Length).TrimStart('\')
-            $destination = Join-Path $UnturnedDir $relativePath
-            if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) {
-                New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-                Copy-Item -LiteralPath $_.FullName -Destination $destination
+        # The signed/hash-verified upstream ZIP includes an optional changelog.txt,
+        # which can be locked by Windows indexing or antivirus during Expand-Archive.
+        # Extract ONLY necessary runtime files via .NET and retry transient sharing violations.
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
+        try {
+            $runtimeEntries = @($zip.Entries | Where-Object {
+                $_.FullName -cmatch '^BepInEx/core/[^/]+$' -or
+                $_.FullName -cin @('winhttp.dll', 'doorstop_config.ini', '.doorstop_version')
+            })
+            foreach ($requiredName in @('BepInEx/core/BepInEx.dll', 'winhttp.dll', 'doorstop_config.ini')) {
+                if (-not @($runtimeEntries | Where-Object { $_.FullName -ceq $requiredName }).Count) {
+                    throw ("Official BepInEx archive is missing a required runtime file: " + $requiredName)
+                }
             }
+            foreach ($entry in $runtimeEntries) {
+                # Archive paths are restricted by the whitelist above; no arbitrary ZIP paths are installed.
+                $relativePath = $entry.FullName.Replace('/', [IO.Path]::DirectorySeparatorChar)
+                $destination = Join-Path $UnturnedDir $relativePath
+                if (Test-Path -LiteralPath $destination -PathType Leaf) { continue }
+                New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+
+                $installed = $false
+                for ($attempt = 1; $attempt -le 4; $attempt++) {
+                    $staged = Join-Path $tmp ('runtime-' + [guid]::NewGuid().ToString('N') + '.tmp')
+                    try {
+                        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $staged)
+                        if ((Get-Item -LiteralPath $staged).Length -ne $entry.Length) {
+                            throw ('BepInEx runtime extraction produced an unexpected file length: ' + $entry.FullName)
+                        }
+                        # Do not overwrite files from an existing installation.
+                        [System.IO.File]::Copy($staged, $destination, $false)
+                        $installed = $true
+                        break
+                    } catch [System.IO.IOException] {
+                        if (Test-Path -LiteralPath $destination -PathType Leaf) {
+                            # An existing file appeared while installing: preserve it rather than overwrite.
+                            if ((Get-Item -LiteralPath $destination).Length -eq $entry.Length) {
+                                $installed = $true
+                                break
+                            }
+                            throw ('BepInEx destination file exists but has an unexpected length: ' + $destination)
+                        }
+                        if ($attempt -eq 4) {
+                            throw ('Windows repeatedly locked a temporary BepInEx file: ' + $entry.FullName +
+                                '. Close other installers and inspect Windows Security Protection history, then retry. ' +
+                                $_.Exception.Message)
+                        }
+                        Write-Warning ("Temporary file lock while installing " + $entry.FullName +
+                            ". Retrying (" + $attempt + "/4)...")
+                        Start-Sleep -Milliseconds (400 * $attempt)
+                    }
+                }
+                if (-not $installed) { throw ('BepInEx file was not installed: ' + $entry.FullName) }
+            }
+        } finally {
+            $zip.Dispose()
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $UnturnedDir 'BepInEx\core\BepInEx.dll') -PathType Leaf)) {
+            throw 'BepInEx core DLL was not installed successfully.'
         }
         Write-Host 'Missing BepInEx 5 files installed from the official release.' -ForegroundColor Green
     } finally {
