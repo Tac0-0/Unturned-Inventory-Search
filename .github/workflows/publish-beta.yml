@@ -1,11 +1,8 @@
 name: Publish beta release
 
+# Archived v0.1.6 workflow. Do not silently rebuild the old beta
+# using v1.0.0 installer files.
 on:
-  push:
-    paths:
-      - 'dist/**'
-      - 'installer/**'
-      - '.github/workflows/publish-beta.yml'
   workflow_dispatch:
 
 permissions:
