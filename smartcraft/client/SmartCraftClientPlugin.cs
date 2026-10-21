@@ -109,7 +109,7 @@ namespace SmartCraft.Client
                 if (blueprint == null || blueprint.Operation != EBlueprintOperation.None ||
                     blueprint.transferState) return;
                 foreach (BlueprintSupply supply in blueprint.supplies)
-                    if (supply.id == Scrap10 || supply.id == Scrap100) return;
+                    if ((supply.FindItemAsset() != null && (supply.FindItemAsset().id == Scrap10 || supply.FindItemAsset().id == Scrap100))) return;
 
                 PlayerInventory inventory = __instance.player.inventory;
                 int bundleUnits = 10 * Count(inventory, Scrap10) +
