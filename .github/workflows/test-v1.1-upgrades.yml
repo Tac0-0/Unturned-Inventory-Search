@@ -1,0 +1,100 @@
+name: Verify v1.0 to v1.1 upgrades on Windows
+
+on:
+  workflow_run:
+    workflows:
+      - 'Publish a complete Inventory Search release'
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  full-package-upgrade:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install v1.0.0 and update entire package to v1.1.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $releases = 'https://api.github.com/repos/Tac0-0/Unturned-Inventory-Search/releases'
+          $base = 'https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download'
+          $v1 = Invoke-RestMethod "$releases/tags/v1.0.0"
+          $v11 = Invoke-RestMethod "$releases/tags/v1.1.0"
+          $z1 = @($v1.assets | Where-Object { $_.name -eq 'InventorySearch-OneClick-v1.0.0.zip' })[0]
+          $dll11 = @($v11.assets | Where-Object { $_.name -eq 'InventorySearchPrototype.dll' })[0]
+          if (-not $z1 -or -not $dll11) { throw 'Required release assets missing' }
+          $download = Join-Path $env:RUNNER_TEMP 'v1.zip'
+          Invoke-WebRequest -UseBasicParsing "$base/v1.0.0/InventorySearch-OneClick-v1.0.0.zip" -OutFile $download
+          if ((Get-FileHash $download -Algorithm SHA256).Hash -ne $z1.digest.Substring(7).ToUpperInvariant()) { throw 'v1.0 ZIP checksum invalid' }
+          $extracted = Join-Path $env:RUNNER_TEMP 'v1'
+          Expand-Archive -LiteralPath $download -DestinationPath $extracted
+          $package = Join-Path $extracted 'InventorySearch-OneClick-v1.0.0'
+          $game = Join-Path $env:RUNNER_TEMP 'DummyUnturned'
+          $plugin = Join-Path $game 'BepInEx\plugins\InventorySearchPrototype'
+          New-Item -ItemType Directory -Path $plugin -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $game 'BepInEx\core') -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $game 'Unturned_Data\Managed') -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $game 'Unturned.exe') -Value 'dummy'
+          Set-Content -LiteralPath (Join-Path $game 'BepInEx\core\BepInEx.dll') -Value 'dummy'
+          Set-Content -LiteralPath (Join-Path $game 'Unturned_Data\Managed\Assembly-CSharp.dll') -Value 'dummy'
+          & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $package 'Install.ps1') -UnturnedDir $game
+          if ($LASTEXITCODE -ne 0) { throw 'Fresh v1.0 install failed' }
+          $state = Join-Path $env:LOCALAPPDATA 'InventorySearch'
+          $target = Join-Path $plugin 'InventorySearchPrototype.dll'
+          $oldHash = (Get-FileHash $target -Algorithm SHA256).Hash
+          $log = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $state 'Update.ps1') 2>&1 | Out-String)
+          Write-Host $log
+          if ($LASTEXITCODE -ne 0 -or $log -notmatch 'Inventory Search updated from official release: v1.1.0') { throw 'Failed full update from v1.0 to v1.1' }
+          $newHash = (Get-FileHash $target -Algorithm SHA256).Hash
+          if ($newHash -ne $dll11.digest.Substring(7).ToUpperInvariant() -or $newHash -eq $oldHash) { throw 'New DLL not installed or checksum mismatch' }
+          $fixture = Join-Path $plugin 'release-info.txt'
+          if (-not (Test-Path $fixture)) { throw 'Extra file not installed; DLL-only update happened' }
+          if ((Get-Content $fixture -Raw) -notmatch 'v1.1.0') { throw 'Additional plugin file unexpected' }
+          $config = Get-Content (Join-Path $state 'config.json') -Raw | ConvertFrom-Json
+          if ($config.installedVersion -ne 'v1.1.0') { throw 'Installed version marker not updated' }
+          $log2 = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $state 'Update.ps1') 2>&1 | Out-String)
+          Write-Host $log2
+          if ($LASTEXITCODE -ne 0 -or $log2 -notmatch 'already up to date') { throw 'Second update check failed' }
+          Write-Host 'PASS: Modern v1.0 updater upgrades DLL, extra plugin file, tools and version to v1.1.0.'
+
+  legacy-dll-only-upgrade:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify previous DLL-only v1 updater can update DLL but not full package
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $historical = '448535ceec37f925adfe253a5bb5b57f990a4ae6'
+          $game = Join-Path $env:RUNNER_TEMP 'DummyUnturned'
+          $plugin = Join-Path $game 'BepInEx\plugins\InventorySearchPrototype'
+          New-Item -ItemType Directory -Path $plugin -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $game 'Unturned.exe') -Value 'dummy'
+          $target = Join-Path $plugin 'InventorySearchPrototype.dll'
+          Copy-Item -LiteralPath 'dist/v1.0.0/InventorySearchPrototype.dll' -Destination $target
+          $state = Join-Path $env:LOCALAPPDATA 'InventorySearch'
+          New-Item -ItemType Directory -Path $state -Force | Out-Null
+          @{
+            gamePath = $game
+            repository = 'Tac0-0/Unturned-Inventory-Search'
+            assetName = 'InventorySearchPrototype.dll'
+          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'config.json')
+          $oldScript = git show "$($historical):installer/Update.ps1"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to retrieve old updater script' }
+          [IO.File]::WriteAllText((Join-Path $state 'Update.ps1'), [string]::Join("\n", $oldScript) + "\n")
+          $log = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $state 'Update.ps1') 2>&1 | Out-String)
+          Write-Host $log
+          if ($LASTEXITCODE -ne 0 -or $log -notmatch 'Inventory Search updated from official release: v1.1.0') { throw 'Old DLL-only updater failed to install new DLL' }
+          $release = Invoke-RestMethod 'https://api.github.com/repos/Tac0-0/Unturned-Inventory-Search/releases/tags/v1.1.0'
+          $asset = @($release.assets | Where-Object { $_.name -eq 'InventorySearchPrototype.dll' })[0]
+          if ((Get-FileHash $target -Algorithm SHA256).Hash -ne $asset.digest.Substring(7).ToUpperInvariant()) { throw 'Old updater downloaded wrong DLL' }
+          if (Test-Path (Join-Path $plugin 'release-info.txt')) { throw 'Old DLL-only updater unexpectedly installed full-package resources' }
+          Write-Host 'PASS: Historical DLL-only updater updates v1.1 DLL, but cannot self-update resources/scripts.'
