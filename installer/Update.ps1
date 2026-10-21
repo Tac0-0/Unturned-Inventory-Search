@@ -123,7 +123,7 @@ try {
         if ($manifestEntries.Count -ne 1) {
             throw 'Release ZIP lacks a unique update-manifest.json. No files changed.'
         }
-        $reader = New-Object IO.StreamReader($manifestEntries[0].Open(), [Text.Encoding]::UTF8)
+        $reader = [IO.StreamReader]::new($manifestEntries[0].Open(), [Text.Encoding]::UTF8)
         try { $manifestText = $reader.ReadToEnd() } finally { $reader.Dispose() }
         $manifest = $manifestText | ConvertFrom-Json
         if ([string]$manifest.version -cne $tag) { throw 'Update manifest version does not match release tag.' }
