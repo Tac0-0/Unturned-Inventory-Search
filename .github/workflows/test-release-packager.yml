@@ -37,7 +37,9 @@ jobs:
           extra.write_text('fixture for bundled future mod files\n', encoding='utf-8')
           optional = target / 'mod/SmartCraftCraftingAddon.dll'
           optional.write_bytes(b'CI TEST FIXTURE ONLY, NOT A REAL CRAFTING PLUGIN')
-
+          # The new updater must discover arbitrary new launchers automatically.
+          added = pathlib.Path('installer/FUTURE-NEW-COMMAND.cmd')
+          added.write_text('@echo off\necho future command\n', encoding='utf-8')
           PY
           python3 scripts/package-release.py 1.9.9
           (cd release-assets && sha256sum -c SHA256SUMS.txt)
@@ -53,6 +55,10 @@ jobs:
                   data = z.read(root + entry['source'])
                   assert hashlib.sha256(data).hexdigest() == entry['sha256'], entry
               assert any(e['target'] == 'plugin/subdir/search-theme.txt' for e in manifest['files'])
+              assert any(e['target'] == 'app/FUTURE-NEW-COMMAND.cmd' for e in manifest['files'])
+              assert any(e['target'] == 'app/INSTALL.cmd' for e in manifest['files'])
+              assert any(e['target'] == 'app/tools/Prepare-Release.ps1' for e in manifest['files'])
+              assert any(e['target'] == 'app/payload/InventorySearchPrototype.sha256' for e in manifest['files'])
               # Older v1.0 updaters consume ONLY manifest.files. They must never
               # see the optional add-on or they will install it without consent.
               assert all(e['target'] != 'plugin/SmartCraftCraftingAddon.dll' for e in manifest['files'])
@@ -74,4 +80,17 @@ jobs:
                   assert root + name in files
 
               print('PASS: Future v1.9.9 package contains DLL, additional mod files, updater, config and full hashes.')
+          PY
+
+          # A command removed from the NEXT package must disappear from its
+          # managed manifest (and the transactional updater will retire it).
+          rm installer/FUTURE-NEW-COMMAND.cmd
+          python3 scripts/package-release.py 1.9.9
+          python3 - <<'PY'
+          import json, zipfile
+          with zipfile.ZipFile('release-assets/InventorySearch-OneClick-v1.9.9.zip') as z:
+              m = json.loads(z.read('InventorySearch-OneClick-v1.9.9/update-manifest.json'))
+              assert all(e['target'] != 'app/FUTURE-NEW-COMMAND.cmd' for e in m['files'])
+              assert any(e['target'] == 'app/INSTALL.cmd' for e in m['files'])
+          print('PASS: new commands discovered automatically and retired commands excluded.')
           PY
