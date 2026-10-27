@@ -5,6 +5,9 @@ on:
     paths:
       - 'installer/**'
       - 'scripts/package-release.py'
+      - 'src/**'
+      - 'dist/**'
+      - 'smartcraft/**'
       - 'tests/full_package_reconcile.ps1'
       - '.github/workflows/test-complete-package.yml'
   workflow_dispatch:
