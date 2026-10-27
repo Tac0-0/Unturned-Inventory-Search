@@ -1,4 +1,4 @@
-// v1.4.1 validated Workshop/vanilla GUID manifest. Never reinterpret a
+// v1.4.2 validated Workshop/vanilla GUID manifest. Never reinterpret a
 // different mod's item if it reuses a legacy numeric ID in the stack catalog.
 using System;
 using System.Collections.Generic;
