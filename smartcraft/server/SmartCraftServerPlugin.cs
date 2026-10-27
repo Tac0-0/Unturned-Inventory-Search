@@ -1,4 +1,4 @@
-// SmartCraft v1.4.1 experimental SERVER engine. Not deployed to production.
+// SmartCraft v1.4.2 experimental SERVER engine. Not deployed to production.
 // Uses Unturned's own pre-craft event to substitute an in-memory blueprint.
 // No new Workshop assets, client-side recipes, or replacement item IDs.
 using System;
@@ -279,7 +279,7 @@ namespace SmartCraft.Server
                 OutputsField.SetValue(replacement,outputs.ToArray());
                 int refundRows=outputs.Count-blueprint.outputs.Length;
                 blueprint=replacement;
-                Logger.Log("[SmartCraft] v1.4.1 cross-provider plan: "+needs.Count+
+                Logger.Log("[SmartCraft] v1.4.2 cross-provider plan: "+needs.Count+
                     " material families; "+supplyChanges.Count+" physical input denominations; "+
                     refundRows+" refund outputs.");
             }
