@@ -31,3 +31,18 @@ More Stacking's `DragonfruitSoup10` ID 14732 has a reverse recipe referencing **
 This catalog alone does not make every recipe work. Bulk craft-many, multiple input families, food/medical/ammunition state, inventory overflow, direct-bundle recipes and multiplayer concurrency all require client/server development and real gameplay testing. Do not publish a stable universal-compatibility claim until they pass.
 
 Regenerate the reference dataset with `python3 smartcraft/catalog/build_stack_catalog.py /path/to/U3DS output.json` when Workshop content changes.
+
+
+## Recipe cleanup policy (v1.4 development)
+
+The audited source snapshot in `recipe-preferences.v1.json` identifies **20 inferior bundle output item IDs** across 11 material families when a matching bundle with the *same number of underlying units* uses less inventory area. For example:
+
+- More Stacking x10 Scrap (10162, 2×2) and vanilla x10 Scrap (1909, 2×2) lose to More Farming x10 Scrap (49101, 1×1).
+- More Stacking x100 Scrap (10163, 3×3) loses to More Farming x100 Scrap (49102, 2×2).
+- Existing inferior bundles **can still be unpacked**. Never hide any recipe that decomposes a larger-denomination bundle into smaller bundles or loose items.
+
+The explicit Can preference suppresses only the vanilla **1 Can → 3 Scrap** salvage blueprint. **4 Scrap → 1 Can** is the separate original crafting blueprint and must remain. There is no second vanilla 1 Can → 4 Scrap salvage blueprint in the installed asset files.
+
+`shared/RecipeCleanupPolicy.cs` is intended to be compiled into both the BepInEx client (for recipe-list hiding via `IsBlueprintPermanentlyDisabled`) and the Rocket server (for authoritative rejection of suppressed crafting requests). It only filters **ordinary, all-consumed, material-balanced, one-output** inferior-stack creation recipes, plus the explicit Can salvage rule. Complex recipes, repair, fill, state transfer, extra outputs, different materials, and native unstack operations are unaffected.
+
+Verified so far: both development assemblies compile against current Unturned managed assemblies; 22 standalone suppression regression tests and Python catalog/preference tests pass. **No in-game recipe cleanup test has run. No recipe deletion or rewrite was performed on any workshop files or live server.** This remains experimental v1.4 work, not part of the published v1.3.2 package.
