@@ -13,16 +13,19 @@ raw = json.loads(p.read_text(encoding='utf8'))
 assert raw['schema'] == 1
 entries = [(id_, base, units, src) for src, body in raw['sources'].items()
            for id_, base, units in body['items']]
-assert len(entries) == 451
+assert len(entries) == 489
 assert len({row[0] for row in entries}) == len(entries)
-assert len({row[1] for row in entries}) == 207
+assert len({row[1] for row in entries}) == 219
 assert all(id_ != base and 1 < units <= 100 for id_, base, units, _ in entries)
 counts = Counter(source for *_, source in entries)
-assert counts == Counter({'more-stacking': 416, 'more-farming': 19, 'vanilla': 16})
+assert counts == Counter({'more-stacking': 416, 'more-farming': 19, 'vanilla': 16, 'more-farming-fruitcrates': 38})
 by_item = {id_: (base, units) for id_, base, units, src in entries}
 assert {item: by_item[item] for item in (1909,10162,10163,49101,49102)} == {
     1909:(67,10),10162:(67,10),10163:(67,100),49101:(67,10),49102:(67,100)
 }
+assert by_item[48147] == (42213,10) and by_item[48177] == (42213,100)
+assert by_item[48135] == (329,10) and by_item[48165] == (329,100)
+assert by_item[48150] == (344,10) and by_item[48180] == (344,100)
 assert by_item[1900] == (39,12)  # Maple logs in native x12 stack
 assert by_item[1910] == (68,5)   # Metal sheets in native x5 stack
 assert not any(item in by_item for item in (14732,14733))
@@ -40,6 +43,10 @@ assert mixed[67] == 131  # 11 + 10 + 100 + 10
 assert mixed[66] == 12   # 2 loose + 10 cloths
 assert mixed[39] == 12   # 1 native stack of 12 Maple Logs
 
+fruit = total_base_units({42213:8,48147:1,48177:1})
+assert fruit[42213] == 118
+assert fruit[42213] - 10 == 108
+
 # A recipe can require multiple independent ingredient families; the catalog
 # must never count units of one as satisfying another.
 recipe = {67:4,66:6,39:2}
@@ -47,4 +54,4 @@ assert all(mixed[base] >= required for base, required in recipe.items())
 assert mixed[67] - recipe[67] == 127
 assert mixed[66] - recipe[66] == 6
 assert mixed[39] - recipe[39] == 10
-print('PASS: 451 variants / 207 families; cross-provider, mixed-denomination and multi-family balance checks')
+print('PASS: 489 variants / 219 families; cross-provider, mixed-denomination and multi-family balance checks')
