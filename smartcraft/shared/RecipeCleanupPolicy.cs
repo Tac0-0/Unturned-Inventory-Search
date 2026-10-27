@@ -93,6 +93,10 @@ namespace SmartCraft.Shared
                 if (!Equivalents.TryGetValue(inputs[i], out ingredient))
                     ingredient = new Equivalent(inputs[i], 1);
                 if (ingredient.BaseId != result.BaseId) return false;
+                // Never hide decompression/unstacking. Otherwise a x100
+                // bundle -> ten x10 bundles could be mistaken for an
+                // inferior x10 production recipe and trap legacy stacks.
+                if (ingredient.Units > result.Units) return false;
                 inputUnits += (long)ingredient.Units * amounts[i];
             }
             return inputUnits == (long)result.Units * outputAmounts[0];
