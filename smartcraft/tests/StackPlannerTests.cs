@@ -27,6 +27,16 @@ public static class StackPlannerTests
         Expect(51,0,new AvailableStack(49101,10,5),
             new AvailableStack(67,1,1));
         Expect(3,0,new AvailableStack(67,1,3));
+        // More Farming fruitcrates are containers, not loose Strawberries.
+        // A single x10 fruitcrate alone covers the 10-Strawberry recipe.
+        Expect(10,0,new AvailableStack(48147,10,1));
+        Expect(2,8,new AvailableStack(48147,10,1));
+        Expect(10,90,new AvailableStack(48177,100,1));
+        Expect(18,2,new AvailableStack(42213,1,8),
+            new AvailableStack(48147,10,1),new AvailableStack(48177,100,1));
+        // Original vanilla crops can also be the base material.
+        Expect(5,5,new AvailableStack(48135,10,1));
+        Expect(100,0,new AvailableStack(48180,100,1));
         StackPlan none;
         if(StackPlanner.TryPlan(22,new AvailableStack[]{new AvailableStack(49101,10,2)},out none))
             throw new Exception("Invented third bundle");
