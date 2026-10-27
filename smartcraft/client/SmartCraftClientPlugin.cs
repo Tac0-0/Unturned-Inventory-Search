@@ -1,6 +1,6 @@
-// SmartCraft v1.3 experimental CLIENT addon; BepInEx 5 + Harmony 2.
+// SmartCraft v1.4.0 experimental CLIENT addon; BepInEx 5 + Harmony 2.
 // Never changes item IDs, recipe definitions, or artwork.
-// Requires a compatible SmartCraft server. Not part of stable v1.2 releases.
+// Requires a compatible SmartCraft server. Cross-mod material equivalence is still under development.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -11,7 +11,7 @@ using SDG.Unturned;
 
 namespace SmartCraft.Client
 {
-    [BepInPlugin("tac0.smartcraft.client", "SmartCraft Crafting Add-on", "1.3.0")]
+    [BepInPlugin("tac0.smartcraft.client", "SmartCraft Crafting Add-on", "1.4.0")]
     [BepInDependency("tac0.inventorysearch", BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class SmartCraftClientPlugin : BaseUnityPlugin
     {
@@ -24,13 +24,13 @@ namespace SmartCraft.Client
         {
             try
             {
-                _harmony = new Harmony("tac0.smartcraft.client.1.3");
+                _harmony = new Harmony("tac0.smartcraft.client.1.4");
                 _harmony.PatchAll(typeof(SmartCraftClientPlugin).Assembly);
                 var statusHook = AccessTools.Method(typeof(PlayerCrafting), "UpdateBlueprintDynamicStatus");
                 var visibilityHook = AccessTools.Method(typeof(PlayerCrafting), "GatherUniqueInputItems");
                 bool statusPatched = Harmony.GetPatchInfo(statusHook) != null;
                 bool visibilityPatched = Harmony.GetPatchInfo(visibilityHook) != null;
-                Logger.LogWarning("SmartCraft v1.3 alpha4 initialized: Y-menu visibility patched=" +
+                Logger.LogWarning("SmartCraft v1.4.0 test initialized: Y-menu visibility patched=" +
                     visibilityPatched + ", bundle count patched=" + statusPatched);
             }
             catch (Exception ex)
@@ -169,7 +169,7 @@ namespace SmartCraft.Client
                 {
                     _didLogFailure = true;
                     SmartCraftClientPlugin.HookLog.LogError(
-                        "SmartCraft alpha4: unsupported Unturned crafting status reflection ABI.");
+                        "SmartCraft v1.4.0: unsupported Unturned crafting status reflection ABI.");
                 }
                 return;
             }
