@@ -1,6 +1,6 @@
-// SmartCraft v1.4.0 experimental CLIENT addon; BepInEx 5 + Harmony 2.
+// SmartCraft v1.4.1 experimental CLIENT addon; BepInEx 5 + Harmony 2.
 // Never changes item IDs, recipe definitions, or artwork.
-// Requires a compatible SmartCraft server. Cross-mod material equivalence is still under development.
+// Requires a compatible SmartCraft server. Cross-mod stack equivalence is experimental and requires the matching server.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -11,7 +11,7 @@ using SDG.Unturned;
 
 namespace SmartCraft.Client
 {
-    [BepInPlugin("tac0.smartcraft.client", "SmartCraft Crafting Add-on", "1.4.0")]
+    [BepInPlugin("tac0.smartcraft.client", "SmartCraft Crafting Add-on", "1.4.1")]
     [BepInDependency("tac0.inventorysearch", BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class SmartCraftClientPlugin : BaseUnityPlugin
     {
@@ -30,7 +30,7 @@ namespace SmartCraft.Client
                 var visibilityHook = AccessTools.Method(typeof(PlayerCrafting), "GatherUniqueInputItems");
                 bool statusPatched = Harmony.GetPatchInfo(statusHook) != null;
                 bool visibilityPatched = Harmony.GetPatchInfo(visibilityHook) != null;
-                Logger.LogWarning("SmartCraft v1.4.0 test initialized: Y-menu visibility patched=" +
+                Logger.LogWarning("SmartCraft v1.4.1 test initialized: Y-menu visibility patched=" +
                     visibilityPatched + ", bundle count patched=" + statusPatched);
             }
             catch (Exception ex)
@@ -73,25 +73,33 @@ namespace SmartCraft.Client
         {
             if (!_reportedOnce)
             {
-                _reportedOnce = true;
-                SmartCraftClientPlugin.HookLog.LogInfo(
-                    "Y-menu visibility hook fired after startup.");
+                _reportedOnce=true;
+                SmartCraftClientPlugin.HookLog.LogInfo("v1.4.1 Y menu cross-provider visibility hook active.");
             }
-            if (results == null) return;
-            // Asset lookup must happen AFTER Unturned has loaded items, not in
-            // a static class initializer during the BepInEx bootstrap.
-            ItemAsset baseAsset = Assets.find(EAssetType.ITEM, (ushort)67) as ItemAsset;
-            if (baseAsset == null) return;
-            bool hasBundle = false;
-            foreach (ItemAsset asset in results)
+            if (results==null || results.Count==0)return;
+            var families=new HashSet<ushort>();
+            foreach(ItemAsset asset in results)
             {
-                if (asset != null && (asset.id == 49101 || asset.id == 49102))
+                if(asset==null)continue;
+                ushort baseId;int units;
+                bool variant=SmartCraft.Shared.StackCatalog.TryMap(asset.id,out baseId,out units);
+                if(variant || SmartCraft.Shared.StackCatalog.ForBase(baseId)!=null)
+                    families.Add(baseId);
+            }
+            foreach(ushort baseId in families)
+            {
+                ItemAsset original=Assets.find(EAssetType.ITEM,baseId) as ItemAsset;
+                if(original==null)continue;
+                results.Add(original);
+                List<SmartCraft.Shared.BundleVariant> variants=SmartCraft.Shared.StackCatalog.ForBase(baseId);
+                if(variants==null)continue;
+                foreach(SmartCraft.Shared.BundleVariant variant in variants)
                 {
-                    hasBundle = true;
-                    break;
+                    if(!SmartCraft.Shared.StackCatalog.IsAvailable(variant.Id))continue;
+                    ItemAsset bundle=Assets.find(EAssetType.ITEM,variant.Id) as ItemAsset;
+                    if(bundle!=null)results.Add(bundle);
                 }
             }
-            if (hasBundle) results.Add(baseAsset);
         }
     }
 
@@ -108,8 +116,6 @@ namespace SmartCraft.Client
         private const ushort Scrap100 = 49102;
         private static bool _didLogFailure;
         private static bool _loggedInvocation;
-        private static bool _loggedFirstScrap;
-        private static int _lastReportedTens = -1, _lastReportedHundreds = -1;
 
         private static readonly Type ParamsType =
             typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.UpdateBlueprintStatusParameters");
@@ -156,107 +162,109 @@ namespace SmartCraft.Client
         {
             if (!_loggedInvocation)
             {
-                _loggedInvocation = true;
-                SmartCraftClientPlugin.HookLog.LogInfo(
-                    "Y-menu dynamic status hook fired after startup.");
+                _loggedInvocation=true;
+                SmartCraftClientPlugin.HookLog.LogInfo("v1.4.1 Y menu cross-provider status hook active.");
             }
-            if (__instance == null || __args == null || __args.Length == 0 ||
-                StatusParam == null || BlueprintField == null || InputItemsField == null ||
-                MissingCountField == null || CriticalMissingField == null ||
-                HasAnyInputField == null || TotalField == null || IsMissingField == null)
+            if (__instance==null || __args==null || __args.Length==0 ||
+                StatusParam==null || BlueprintField==null || InputItemsField==null ||
+                MissingCountField==null || CriticalMissingField==null ||
+                HasAnyInputField==null || TotalField==null || IsMissingField==null)
             {
-                if (!_didLogFailure)
+                if(!_didLogFailure)
                 {
-                    _didLogFailure = true;
-                    SmartCraftClientPlugin.HookLog.LogError(
-                        "SmartCraft v1.4.0: unsupported Unturned crafting status reflection ABI.");
+                    _didLogFailure=true;
+                    SmartCraftClientPlugin.HookLog.LogError("v1.4.1 unsupported Unturned crafting status ABI.");
                 }
                 return;
             }
             try
             {
-                object status = StatusParam.GetValue(__args[0]);
-                if (status == null) return;
-                Blueprint bp = BlueprintField.GetValue(status) as Blueprint;
-                if (bp == null || bp.Operation != EBlueprintOperation.None || bp.transferState) return;
-                BlueprintSupply[] supplies = bp.supplies;
-                IList inputStatuses = InputItemsField.GetValue(status) as IList;
-                if (supplies == null || inputStatuses == null ||
-                    inputStatuses.Count != supplies.Length) return;
-
-                int scrapRows = 0;
-                int rowIndex = -1;
-                for (int i = 0; i < supplies.Length; i++)
+                object status=StatusParam.GetValue(__args[0]);
+                if(status==null)return;
+                Blueprint bp=BlueprintField.GetValue(status) as Blueprint;
+                if(bp==null || bp.Operation!=EBlueprintOperation.None || bp.transferState)return;
+                BlueprintSupply[] supplies=bp.supplies;
+                IList inputStatuses=InputItemsField.GetValue(status) as IList;
+                if(supplies==null || inputStatuses==null || supplies.Length!=inputStatuses.Count)return;
+                // Use the same fail-closed eligibility gate as the server.
+                // Do not partially rewrite the status before discovering an
+                // unsupported supply in a later recipe row.
+                foreach(BlueprintSupply supply in supplies)
                 {
-                    ItemAsset asset = supplies[i].FindItemAsset();
-                    if (asset == null) continue;
-                    if (asset.id == Scrap10 || asset.id == Scrap100) return;
-                    if (asset.id != Scrap) continue;
-                    // This stage supports original consumable Scrap materials,
-                    // not alternative nonconsuming tools or special ammo amounts.
-                    if (!supplies[i].ShouldConsume ||
-                        supplies[i].CountingMethod != ECraftingInputCountingMethod.TotalItems) return;
-                    scrapRows++;
-                    rowIndex = i;
+                    ItemAsset asset=supply==null ? null : supply.FindItemAsset();
+                    if(asset==null || !supply.ShouldConsume ||
+                        supply.CountingMethod!=ECraftingInputCountingMethod.TotalItems ||
+                        supply.amount<=0)return;
                 }
-                if (scrapRows != 1) return; // Avoid double allocation across duplicate supply rows.
-
-                var inv = __instance.player.inventory;
-                int tens = Count(inv, Scrap10);
-                int hundreds = Count(inv, Scrap100);
-                if (!_loggedFirstScrap)
+                var inventory=new Dictionary<ushort,int>();
+                PlayerInventory inv=__instance.player.inventory;
+                for(byte page=PlayerInventory.SLOTS;page<PlayerInventory.PAGES;page++)
                 {
-                    _loggedFirstScrap = true;
-                    SmartCraftClientPlugin.HookLog.LogWarning(
-                        "SmartCraft alpha4 first Scrap recipe: loose=" +
-                        TotalField.GetValue(inputStatuses[rowIndex]) +
-                        " tens=" + tens + " hundreds=" + hundreds +
-                        " required=" + supplies[rowIndex].amount);
-                }
-                int bundleUnits = tens * 10 + hundreds * 100;
-                if (bundleUnits <= 0) return;
-
-                object row = inputStatuses[rowIndex];
-                int loose = (int)TotalField.GetValue(row);
-                int required = supplies[rowIndex].amount;
-                int previousMissing = Math.Max(0, required - loose);
-                int combined = checked(loose + bundleUnits);
-                int currentMissing = Math.Max(0, required - combined);
-                TotalField.SetValue(row, combined);
-                IsMissingField.SetValue(row, currentMissing > 0);
-
-                int previousTotalMissing = (int)MissingCountField.GetValue(status);
-                MissingCountField.SetValue(status,
-                    Math.Max(0, previousTotalMissing - previousMissing + currentMissing));
-                HasAnyInputField.SetValue(status, true);
-
-                bool criticalMissing = false;
-                for (int i = 0; i < supplies.Length; i++)
-                {
-                    if (supplies[i].isCritical &&
-                        (bool)IsMissingField.GetValue(inputStatuses[i]))
+                    if(page==PlayerInventory.STORAGE || page==PlayerInventory.AREA)continue;
+                    byte count=inv.getItemCount(page);
+                    for(byte index=0;index<count;index++)
                     {
-                        criticalMissing = true;
-                        break;
+                        ItemJar jar=inv.getItem(page,index);
+                        if(jar==null||jar.item==null)continue;
+                        ushort id=jar.item.id;int old=0;
+                        inventory.TryGetValue(id,out old);
+                        inventory[id]=old+1;
                     }
                 }
-                CriticalMissingField.SetValue(status, criticalMissing);
-
-                if (tens != _lastReportedTens || hundreds != _lastReportedHundreds)
+                var availableBase=new Dictionary<ushort,int>();
+                foreach(var item in inventory)
                 {
-                    _lastReportedTens = tens;
-                    _lastReportedHundreds = hundreds;
-                    SmartCraftClientPlugin.HookLog.LogWarning("SmartCraft alpha4 Y-menu Scrap: " +
-                        loose + " loose + " + tens + " x10 + " + hundreds +
-                        " x100 = " + combined + " usable Scrap");
+                    ushort baseId;int units;
+                    bool variant=SmartCraft.Shared.StackCatalog.TryMap(item.Key,out baseId,out units);
+                    if(!variant && SmartCraft.Shared.StackCatalog.ForBase(baseId)==null)continue;
+                    if(!SmartCraft.Shared.StackCatalog.IsAvailable(item.Key))continue;
+                    int current=0;availableBase.TryGetValue(baseId,out current);
+                    availableBase[baseId]=checked(current+item.Value*units);
                 }
-            }
-            catch (Exception ex)
-            {
-                if (!_didLogFailure)
+                int totalMissing=(int)MissingCountField.GetValue(status);
+                bool hasAny=(bool)HasAnyInputField.GetValue(status);
+                bool changed=false;
+                for(int i=0;i<supplies.Length;i++)
                 {
-                    _didLogFailure = true;
-                    SmartCraftClientPlugin.HookLog.LogError("SmartCraft alpha4 crafting status failure: " + ex);
+                    BlueprintSupply supply=supplies[i];
+                    ItemAsset asset=supply==null ? null:supply.FindItemAsset();
+                    if(asset==null)continue;
+                    ushort baseId;int units;
+                    bool isVariant=SmartCraft.Shared.StackCatalog.TryMap(asset.id,out baseId,out units);
+                    if(!isVariant && SmartCraft.Shared.StackCatalog.ForBase(baseId)==null)continue;
+                    if(!supply.ShouldConsume ||
+                       supply.CountingMethod!=ECraftingInputCountingMethod.TotalItems ||
+                       supply.amount<=0) return; // preserve native stateful semantics
+                    int remaining=0;availableBase.TryGetValue(baseId,out remaining);
+                    int virtualItems=Math.Max(0,remaining/units);
+                    object row=inputStatuses[i];
+                    int vanillaAmount=(int)TotalField.GetValue(row);
+                    int vanillaMissing=Math.Max(0,supply.amount-vanillaAmount);
+                    int equivalentMissing=Math.Max(0,supply.amount-virtualItems);
+                    TotalField.SetValue(row,virtualItems);
+                    IsMissingField.SetValue(row,equivalentMissing>0);
+                    totalMissing=Math.Max(0,totalMissing-vanillaMissing+equivalentMissing);
+                    hasAny=hasAny||virtualItems>0;
+                    int reserved=checked(Math.Min(remaining,checked(supply.amount*units)));
+                    availableBase[baseId]=remaining-reserved;
+                    changed=true;
+                }
+                if(!changed)return;
+                MissingCountField.SetValue(status,totalMissing);
+                HasAnyInputField.SetValue(status,hasAny);
+                bool criticalMissing=false;
+                for(int i=0;i<supplies.Length;i++)
+                    if(supplies[i].isCritical &&
+                       (bool)IsMissingField.GetValue(inputStatuses[i]))
+                    {criticalMissing=true;break;}
+                CriticalMissingField.SetValue(status,criticalMissing);
+            }
+            catch(Exception ex)
+            {
+                if(!_didLogFailure)
+                {
+                    _didLogFailure=true;
+                    SmartCraftClientPlugin.HookLog.LogError("v1.4.1 cross-provider status failure: "+ex);
                 }
             }
         }
