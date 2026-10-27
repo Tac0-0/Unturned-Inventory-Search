@@ -72,7 +72,7 @@ namespace SmartCraft.Shared
         public static bool AssetExists(ushort id)
         {
             ItemAsset a=Assets.find(EAssetType.ITEM,id) as ItemAsset;
-            return a!=null && a.id==id;
+            return SmartCraft.Shared.KnownStackGuids.Matches(id,a);
         }
         public static bool IsAvailable(ushort id)
         {
