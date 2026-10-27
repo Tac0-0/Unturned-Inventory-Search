@@ -82,6 +82,20 @@ foreach ($item in $manifest.files) {
         throw ('Managed file checksum mismatch: ' + $target)
     }
 }
+# The installed README and version checker must reference the live package,
+# never a stale extracted installer folder from another version.
+$liveReadme = Get-Content -LiteralPath (Join-Path $state 'README.md') -Raw
+if ($liveReadme -notmatch 'Inventory Search v1.9.9') {
+    throw 'Live README did not update to the package version'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $state 'SHOW-VERSION.cmd'))) {
+    throw 'Installed version-check shortcut was not synchronized'
+}
+$verOutput = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $state 'Show-Version.ps1') 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0 -or $verOutput -notmatch 'Installed Inventory Search: v1.9.9' -or
+    $verOutput -notmatch 'Main plugin verified') {
+    throw ('Installed version or checksum check failed: ' + $verOutput)
+}
 if (-not (Test-Path -LiteralPath (Join-Path $state 'INSTALL.cmd'))) { throw 'INSTALL.cmd was not installed' }
 if (-not (Test-Path -LiteralPath (Join-Path $state 'UNINSTALL-CRAFTING.cmd'))) { throw 'Uninstaller was not installed' }
 # An owned file from an older package must disappear; unrelated files must stay.

@@ -13,7 +13,7 @@ namespace InventorySearchPrototype
     /// Does not invoke any server RPCs or modify an ItemJar / inventory page.
     /// Requires BepInEx 5 and a no-BattlEye game launch.
     /// </summary>
-    [BepInPlugin("dev.tac0.unturned.inventorysearch", "Inventory Search Prototype", "1.3.1")]
+    [BepInPlugin("dev.tac0.unturned.inventorysearch", "Inventory Search Prototype", "1.3.2")]
     public sealed class InventorySearchPlugin : BaseUnityPlugin
     {
         private const float RefreshPeriodSeconds = 0.20f;
@@ -64,7 +64,7 @@ namespace InventorySearchPrototype
         private void Awake()
         {
             instance = this;
-            Logger.LogInfo("Inventory Search Prototype 1.3.1 loaded. Singleplayer / no-BattlEye testing only.");
+            Logger.LogInfo("Inventory Search Prototype 1.3.2 loaded. Singleplayer / no-BattlEye testing only.");
             Logger.LogInfo("Reflection: characterSlider=" + (SliderField != null) +
                 ", items=" + (GridsField != null) + ", slots=" + (SlotsField != null) +
                 "; enabled=" + enabled + "; activeGameObject=" + gameObject.activeInHierarchy);
