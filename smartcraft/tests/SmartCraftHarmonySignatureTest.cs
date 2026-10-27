@@ -10,19 +10,18 @@ public static class SmartCraftHarmonySignatureTest
     public static int Main(string[] argv)
     {
         if (argv.Length != 1) throw new Exception("Expected client DLL path");
-        var original = typeof(PlayerCrafting).GetMethod("UpdateBlueprintInputItemStatus",
+        var original = typeof(PlayerCrafting).GetMethod("UpdateBlueprintDynamicStatus",
             BindingFlags.NonPublic | BindingFlags.Instance);
         if (original == null) throw new Exception("Crafting status method signature changed");
         var plugin = Assembly.LoadFrom(argv[0]);
-        var patchType = plugin.GetType("SmartCraft.Client.BlueprintInputQuantityPatch", true);
+        var patchType = plugin.GetType("SmartCraft.Client.BlueprintDynamicStatusPatch", true);
         var postfix = patchType.GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic);
         if (postfix == null) throw new Exception("Harmony postfix missing");
         var paramTypes = original.GetParameters();
-        if (paramTypes.Length != 4 ||
+        if (paramTypes.Length != 1 ||
+            !paramTypes[0].ParameterType.IsByRef ||
             paramTypes[0].ParameterType.GetElementType().FullName !=
-                "SDG.Unturned.UpdateBlueprintStatusParameters" ||
-            paramTypes[1].ParameterType != typeof(BlueprintSupply) ||
-            paramTypes[2].ParameterType.FullName != "SDG.Unturned.BlueprintInputItemStatus")
+                "SDG.Unturned.UpdateBlueprintStatusParameters")
             throw new Exception("Unturned crafting status ABI changed");
 
         var paramStatusType = typeof(PlayerCrafting).Assembly.GetType(
@@ -41,7 +40,11 @@ public static class SmartCraftHarmonySignatureTest
         foreach (var name in new[] { "totalAmount", "isMissingRequiredAmount" })
             if (inputStatusType.GetField(name) == null)
                 throw new Exception("Missing input field " + name);
-        Console.WriteLine("PASS: Unturned Y crafting method and internal fields match the alpha patch");
+        var visibility = typeof(PlayerCrafting).GetMethod("GatherUniqueInputItems",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        if (visibility == null || visibility.GetParameters().Length != 1)
+            throw new Exception("Recipe visibility hook ABI changed");
+        Console.WriteLine("PASS: Unturned Y-menu dynamic status and visibility ABI match alpha3");
         Console.WriteLine("NOTE: installing Harmony requires the live Unity engine; this is ABI-only verification.");
         return 0;
     }
