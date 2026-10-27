@@ -1,4 +1,4 @@
-// SmartCraft v1.4.0 experimental SERVER engine. Not deployed to production.
+// SmartCraft v1.4.1 experimental SERVER engine. Not deployed to production.
 // Uses Unturned's own pre-craft event to substitute an in-memory blueprint.
 // No new Workshop assets, client-side recipes, or replacement item IDs.
 using System;
@@ -35,7 +35,7 @@ namespace SmartCraft.Server
                 return;
             }
             PlayerCrafting.OnCraftBlueprintRequestedV2 += RewriteCraft;
-            Logger.Log("[SmartCraft] Original-bundle crafting handler installed (experimental; scrap-only substitution + recipe cleanup).");
+            Logger.Log("[SmartCraft] Original-bundle crafting handler installed (experimental; cross-provider stack substitution + recipe cleanup).");
         }
 
         protected override void Unload()
@@ -128,94 +128,145 @@ namespace SmartCraft.Server
             return output;
         }
 
-        private static void RewriteCraft(PlayerCrafting crafting, ref Blueprint blueprint, ref bool shouldAllow)
+        private sealed class MaterialNeed
         {
-            if (!shouldAllow || crafting == null || blueprint == null) return;
-            // State-transfer/repair/fill operations require a separate preservation strategy.
-            if (blueprint.Operation != EBlueprintOperation.None || blueprint.transferState) return;
+            public ushort BaseId;
+            public int Required;
+        }
+
+        private static Dictionary<ushort,int> Snapshot(PlayerInventory inventory)
+        {
+            var counts=new Dictionary<ushort,int>();
+            for (byte page=PlayerInventory.SLOTS; page<PlayerInventory.PAGES; page++)
+            {
+                if (page==PlayerInventory.STORAGE || page==PlayerInventory.AREA)continue;
+                byte count=inventory.getItemCount(page);
+                for (byte index=0;index<count;index++)
+                {
+                    ItemJar jar=inventory.getItem(page,index);
+                    if (jar==null || jar.item==null)continue;
+                    ushort id=jar.item.id;int previous=0;
+                    counts.TryGetValue(id,out previous);
+                    counts[id]=previous+1;
+                }
+            }
+            return counts;
+        }
+
+        private static int CountOf(Dictionary<ushort,int> inventory,ushort id)
+        {
+            int count=0;inventory.TryGetValue(id,out count);return count;
+        }
+
+        private static void ReturnChange(ushort baseId,int excess,List<BlueprintOutput> results)
+        {
+            if (excess<=0)return;
+            // Prefer original More Farming compact x10/x100 where installed.
+            // Native x12/x5 work for the families whose packs use them.
+            foreach (int units in new int[]{100,12,10,5})
+            {
+                if (excess<units)continue;
+                ushort bundle=SmartCraft.Shared.StackCatalog.PreferredRefund(baseId,units);
+                if(bundle==0)continue;
+                int amount=excess/units;
+                results.Add(CreateRefundOutput(bundle,amount));
+                excess-=amount*units;
+            }
+            if (excess>0)results.Add(CreateRefundOutput(baseId,excess));
+        }
+
+        private static void RewriteCraft(PlayerCrafting crafting,ref Blueprint blueprint,ref bool shouldAllow)
+        {
+            if (!shouldAllow || crafting==null || blueprint==null)return;
+            if (blueprint.Operation!=EBlueprintOperation.None || blueprint.transferState)return;
             try
             {
-                // Mirror the client-side recipe visibility filter. This
-                // server-side rejection prevents hidden inferior recipes from
-                // being invoked by a crafted/modified network request.
+                // A hidden recipe must also be blocked when someone submits its
+                // crafting request directly rather than clicking in the Y menu.
                 if (SmartCraft.Shared.RecipeCleanupPolicy.ShouldSuppressBlueprint(blueprint))
+                { shouldAllow=false;return; }
+
+                BlueprintSupply[] original=blueprint.supplies;
+                if (original==null || original.Length<1)return;
+                // Fail closed for stateful, critical non-consuming and quality-
+                // dependent supplies until their preservation has been tested.
+                var needs=new SortedDictionary<ushort,MaterialNeed>();
+                var originalCounts=new Dictionary<ushort,int>();
+                bool touchesStackFamily=false;
+                foreach(BlueprintSupply supply in original)
                 {
-                    shouldAllow = false;
-                    return;
-                }
-                BlueprintSupply[] originals = blueprint.supplies;
-                if (originals == null || originals.Length == 0) return;
-
-                // Never intercept recipes that themselves explicitly use a bundle ID.
-                foreach (BlueprintSupply s in originals)
-                    if ((s.FindItemAsset() != null && (s.FindItemAsset().id == Scrap10 || s.FindItemAsset().id == Scrap100))) return;
-
-                PlayerInventory inventory = crafting.player.inventory;
-                int loose = Count(inventory, Scrap);
-                int tens = Count(inventory, Scrap10);
-                int hundreds = Count(inventory, Scrap100);
-                if (tens + hundreds == 0) return;
-
-                int totalScrapRequired = 0;
-                foreach (BlueprintSupply s in originals)
-                {
-                    if ((s.FindItemAsset() == null || s.FindItemAsset().id != Scrap)) continue;
-                    if (!s.ShouldConsume || s.CountingMethod != ECraftingInputCountingMethod.TotalItems)
-                        return;
-                    totalScrapRequired += s.amount;
-                }
-                if (totalScrapRequired <= loose || totalScrapRequired < 1) return;
-                int neededFromBundles = totalScrapRequired - loose;
-                int tensUsed, hundredsUsed;
-                if (!TrySelectBundles(neededFromBundles, tens, hundreds, out tensUsed, out hundredsUsed))
-                    return; // Vanilla fails the request without consuming anything.
-
-                // Do not mutate asset-owned Blueprint or BlueprintSupply instances.
-                var inputs = new List<BlueprintSupply>();
-                int looseRemaining = loose;
-                foreach (BlueprintSupply original in originals)
-                {
-                    if ((original.FindItemAsset() == null || original.FindItemAsset().id != Scrap)) { inputs.Add(original); continue; }
-                    int thisLoose = Math.Min(original.amount, looseRemaining);
-                    looseRemaining -= thisLoose;
-                    if (thisLoose > 0)
+                    ItemAsset asset=supply==null ? null : supply.FindItemAsset();
+                    if(asset==null || !supply.ShouldConsume ||
+                        supply.CountingMethod!=ECraftingInputCountingMethod.TotalItems ||
+                        supply.amount<=0)return;
+                    ushort baseId;int units;
+                    bool variant=SmartCraft.Shared.StackCatalog.TryMap(asset.id,out baseId,out units);
+                    if(variant || SmartCraft.Shared.StackCatalog.ForBase(baseId)!=null)
+                        touchesStackFamily=true;
+                    MaterialNeed need;
+                    if(!needs.TryGetValue(baseId,out need))
                     {
-                        var copy = (BlueprintSupply)CloneMethod.Invoke(original, null);
-                        copy.amount = thisLoose;
-                        inputs.Add(copy);
+                        need=new MaterialNeed{BaseId=baseId,Required=0};
+                        needs.Add(baseId,need);
                     }
+                    need.Required=checked(need.Required+checked(supply.amount*units));
+                    int previous=0;
+                    originalCounts.TryGetValue(asset.id,out previous);
+                    originalCounts[asset.id]=checked(previous+supply.amount);
                 }
-                if (tensUsed > 0)
-                    inputs.Add(CreateBundleSupply(Scrap10, tensUsed));
-                if (hundredsUsed > 0)
-                    inputs.Add(CreateBundleSupply(Scrap100, hundredsUsed));
+                if(!touchesStackFamily)return;
+                PlayerInventory inv=crafting.player.inventory;
+                Dictionary<ushort,int> counts=Snapshot(inv);
+                bool originalsEnough=true;
+                foreach(var item in originalCounts)
+                    if(CountOf(counts,item.Key)<item.Value)
+                    {originalsEnough=false;break;}
+                if(originalsEnough)return; // preserve vanilla for normal crafting
 
-                int excess = loose + 10 * tensUsed + 100 * hundredsUsed - totalScrapRequired;
-                if (excess < 0) { shouldAllow = false; return; }
-                var outputs = new List<BlueprintOutput>(blueprint.outputs);
-                // Do not create ammo-style items. Refund exact CHANGE using real
-                // More Farming x10 bundles plus original loose scrap objects.
-                int returnedTens = excess / 10;
-                int returnedLoose = excess % 10;
-                if (returnedTens > 0)
-                    outputs.Add(CreateRefundOutput(Scrap10, returnedTens));
-                if (returnedLoose > 0)
-                    outputs.Add(CreateRefundOutput(Scrap, returnedLoose));
-
-                var replacement = (Blueprint)CloneMethod.Invoke(blueprint, null);
-                SuppliesField.SetValue(replacement, inputs.ToArray());
-                OutputsField.SetValue(replacement, outputs.ToArray());
-                blueprint = replacement; // Vanilla still validates the recipe and gives output.
-                Logger.Log("[SmartCraft] Resolved bundled supplies and refund outputs; rewritten recipe requires " + totalScrapRequired +
-                    " scrap, consuming " + loose + " loose + " + tensUsed + " x10 + " +
-                    hundredsUsed + " x100; returning " + returnedTens + " x10 + " +
-                    returnedLoose + " loose.");
+                var supplyChanges=new List<BlueprintSupply>();
+                var outputs=new List<BlueprintOutput>(blueprint.outputs);
+                bool anyEquivalence=false;
+                foreach(MaterialNeed need in needs.Values)
+                {
+                    var available=new List<SmartCraft.Shared.AvailableStack>();
+                    int loose=CountOf(counts,need.BaseId);
+                    if(loose>0 && SmartCraft.Shared.StackCatalog.IsAvailable(need.BaseId))
+                        available.Add(new SmartCraft.Shared.AvailableStack(need.BaseId,1,loose));
+                    List<SmartCraft.Shared.BundleVariant> variants=
+                        SmartCraft.Shared.StackCatalog.ForBase(need.BaseId);
+                    if(variants!=null)
+                    {
+                        foreach(SmartCraft.Shared.BundleVariant variant in variants)
+                        {
+                            int held=CountOf(counts,variant.Id);
+                            if(held>0 && SmartCraft.Shared.StackCatalog.IsAvailable(variant.Id))
+                                available.Add(new SmartCraft.Shared.AvailableStack(variant.Id,variant.Units,held));
+                        }
+                    }
+                    SmartCraft.Shared.StackPlan plan;
+                    if(!SmartCraft.Shared.StackPlanner.TryPlan(need.Required,available,out plan))
+                        return; // native failure, no items touched
+                    foreach(var chosen in plan.Selected)
+                    {
+                        supplyChanges.Add(CreateBundleSupply(chosen.Key,chosen.Value));
+                        if(chosen.Key!=need.BaseId)anyEquivalence=true;
+                    }
+                    ReturnChange(need.BaseId,plan.Excess,outputs);
+                }
+                if(!anyEquivalence)return;
+                var replacement=(Blueprint)CloneMethod.Invoke(blueprint,null);
+                SuppliesField.SetValue(replacement,supplyChanges.ToArray());
+                OutputsField.SetValue(replacement,outputs.ToArray());
+                int refundRows=outputs.Count-blueprint.outputs.Length;
+                blueprint=replacement;
+                Logger.Log("[SmartCraft] v1.4.1 cross-provider plan: "+needs.Count+
+                    " material families; "+supplyChanges.Count+" physical input denominations; "+
+                    refundRows+" refund outputs.");
             }
-            catch (Exception e)
+            catch(Exception ex)
             {
-                // A plugin failure must never grant outputs or debit only part of an input.
-                shouldAllow = false;
-                Logger.LogError("[SmartCraft] Refused unsafe craft: " + e);
+                shouldAllow=false;
+                Logger.LogError("[SmartCraft] Refused unsafe cross-provider craft: "+ex);
             }
         }
     }
