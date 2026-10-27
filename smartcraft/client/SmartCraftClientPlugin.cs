@@ -23,11 +23,11 @@ namespace SmartCraft.Client
             {
                 _harmony = new Harmony("tac0.smartcraft.client.1.3");
                 _harmony.PatchAll(typeof(SmartCraftClientPlugin).Assembly);
-                var statusHook = AccessTools.Method(typeof(PlayerCrafting), "UpdateBlueprintInputItemStatus");
+                var statusHook = AccessTools.Method(typeof(PlayerCrafting), "UpdateBlueprintDynamicStatus");
                 var visibilityHook = AccessTools.Method(typeof(PlayerCrafting), "GatherUniqueInputItems");
                 bool statusPatched = Harmony.GetPatchInfo(statusHook) != null;
                 bool visibilityPatched = Harmony.GetPatchInfo(visibilityHook) != null;
-                Logger.LogInfo("SmartCraft v1.3 alpha2: Y-menu visibility patched=" +
+                Logger.LogWarning("SmartCraft v1.3 alpha3 initialized: Y-menu visibility patched=" +
                     visibilityPatched + ", bundle count patched=" + statusPatched);
             }
             catch (Exception ex)
@@ -75,22 +75,52 @@ namespace SmartCraft.Client
         }
     }
 
-    [HarmonyPatch(typeof(PlayerCrafting), "UpdateBlueprintInputItemStatus")]
-    internal static class BlueprintInputQuantityPatch
+    // The actual recipe card uses BlueprintInputItemStatus.totalAmount,
+    // calculated during UpdateBlueprintDynamicStatus. Patch the completion
+    // of that entire calculation, not an individual intermediate item search.
+    // The original v1.3-alpha1/2 patch could silently fail to update the
+    // displayed amount: it inspected an internal struct mid-calculation.
+    [HarmonyPatch(typeof(PlayerCrafting), "UpdateBlueprintDynamicStatus")]
+    internal static class BlueprintDynamicStatusPatch
     {
         private const ushort Scrap = 67;
         private const ushort Scrap10 = 49101;
         private const ushort Scrap100 = 49102;
         private static bool _didLogFailure;
+        private static int _lastReportedTens = -1, _lastReportedHundreds = -1;
+
+        private static readonly Type ParamsType =
+            typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.UpdateBlueprintStatusParameters");
+        private static readonly FieldInfo StatusParam =
+            ParamsType == null ? null : AccessTools.Field(ParamsType, "status");
+        private static readonly Type StatusType =
+            typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.BlueprintStatus");
+        private static readonly FieldInfo BlueprintField =
+            StatusType == null ? null : AccessTools.Field(StatusType, "blueprint");
+        private static readonly FieldInfo InputItemsField =
+            StatusType == null ? null : AccessTools.Field(StatusType, "inputItems");
+        private static readonly FieldInfo MissingCountField =
+            StatusType == null ? null : AccessTools.Field(StatusType, "totalMissingInputItemsCount");
+        private static readonly FieldInfo CriticalMissingField =
+            StatusType == null ? null : AccessTools.Field(StatusType, "isMissingAnyCriticalInputItem");
+        private static readonly FieldInfo HasAnyInputField =
+            StatusType == null ? null : AccessTools.Field(StatusType, "hasAnyInputItem");
+        private static readonly Type InputStatusType =
+            typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.BlueprintInputItemStatus");
+        private static readonly FieldInfo TotalField =
+            InputStatusType == null ? null : AccessTools.Field(InputStatusType, "totalAmount");
+        private static readonly FieldInfo IsMissingField =
+            InputStatusType == null ? null : AccessTools.Field(InputStatusType, "isMissingRequiredAmount");
 
         private static int Count(PlayerInventory inventory, ushort id)
         {
             int total = 0;
-            for (byte page = PlayerInventory.SLOTS; page < PlayerInventory.PAGES; page++)
+            // Match Unturned's own GatherUniqueInputItems inventory pages.
+            // STORAGE/AREA represent external/world items, not held materials.
+            for (byte page = 0; page < PlayerInventory.STORAGE; page++)
             {
-                if (page == PlayerInventory.STORAGE || page == PlayerInventory.AREA) continue;
-                byte count = inventory.getItemCount(page);
-                for (byte index = 0; index < count; index++)
+                byte itemCount = inventory.getItemCount(page);
+                for (byte index = 0; index < itemCount; index++)
                 {
                     ItemJar jar = inventory.getItem(page, index);
                     if (jar != null && jar.item != null && jar.item.id == id)
@@ -100,98 +130,95 @@ namespace SmartCraft.Client
             return total;
         }
 
-        // Unturned deliberately marks its status classes INTERNAL. Harmony's
-        // __args is the safe ABI here, while cached FieldInfo restricts access
-        // to just the quantities and missing flags we need.
-        private static readonly Type ParametersType =
-            typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.UpdateBlueprintStatusParameters");
-        private static readonly FieldInfo ParamStatus =
-            ParametersType == null ? null :
-            AccessTools.Field(ParametersType, "status");
-        private static readonly Type StatusType =
-            typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.BlueprintStatus");
-        private static readonly FieldInfo StatusBlueprint =
-            StatusType == null ? null : AccessTools.Field(StatusType, "blueprint");
-        private static readonly FieldInfo MissingCount =
-            StatusType == null ? null : AccessTools.Field(StatusType, "totalMissingInputItemsCount");
-        private static readonly FieldInfo CriticalMissing =
-            StatusType == null ? null : AccessTools.Field(StatusType, "isMissingAnyCriticalInputItem");
-        private static readonly FieldInfo HasAnyInput =
-            StatusType == null ? null : AccessTools.Field(StatusType, "hasAnyInputItem");
-        private static readonly FieldInfo InputStatuses =
-            StatusType == null ? null : AccessTools.Field(StatusType, "inputItems");
-        private static readonly Type InputStatusType =
-            typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.BlueprintInputItemStatus");
-        private static readonly FieldInfo InputTotal =
-            InputStatusType == null ? null : AccessTools.Field(InputStatusType, "totalAmount");
-        private static readonly FieldInfo InputMissing =
-            InputStatusType == null ? null : AccessTools.Field(InputStatusType, "isMissingRequiredAmount");
-
-        private static void Postfix(PlayerCrafting __instance, object[] __args, ref bool __result)
+        private static void Postfix(PlayerCrafting __instance, object[] __args)
         {
-            if (__instance == null || __args == null || __args.Length < 3 ||
-                ParamStatus == null || StatusBlueprint == null || MissingCount == null ||
-                CriticalMissing == null || HasAnyInput == null || InputStatuses == null ||
-                InputTotal == null || InputMissing == null) return;
-            BlueprintSupply inputConfig = __args[1] as BlueprintSupply;
-            object inputStatus = __args[2];
-            if (inputConfig == null || inputStatus == null || !inputConfig.ShouldConsume ||
-                inputConfig.CountingMethod != ECraftingInputCountingMethod.TotalItems) return;
-            ItemAsset asset = inputConfig.FindItemAsset();
-            if (asset == null || asset.id != Scrap) return;
-
-            try
+            if (__instance == null || __args == null || __args.Length == 0 ||
+                StatusParam == null || BlueprintField == null || InputItemsField == null ||
+                MissingCountField == null || CriticalMissingField == null ||
+                HasAnyInputField == null || TotalField == null || IsMissingField == null)
             {
-                object status = ParamStatus.GetValue(__args[0]);
-                if (status == null) return;
-                Blueprint blueprint = StatusBlueprint.GetValue(status) as Blueprint;
-                if (blueprint == null || blueprint.Operation != EBlueprintOperation.None ||
-                    blueprint.transferState) return;
-                foreach (BlueprintSupply supply in blueprint.supplies)
-                    if ((supply.FindItemAsset() != null && (supply.FindItemAsset().id == Scrap10 || supply.FindItemAsset().id == Scrap100))) return;
-
-                PlayerInventory inventory = __instance.player.inventory;
-                int bundleUnits = 10 * Count(inventory, Scrap10) +
-                                  100 * Count(inventory, Scrap100);
-                if (bundleUnits <= 0) return;
-                int before = (int)InputTotal.GetValue(inputStatus);
-                int required = inputConfig.amount;
-                int missingBefore = Math.Max(0, required - before);
-                int newAmount = before + bundleUnits;
-                int missingAfter = Math.Max(0, required - newAmount);
-                InputTotal.SetValue(inputStatus, newAmount);
-                InputMissing.SetValue(inputStatus, missingAfter > 0);
-                int currentMissing = (int)MissingCount.GetValue(status);
-                MissingCount.SetValue(status, Math.Max(0, currentMissing - missingBefore + missingAfter));
-                HasAnyInput.SetValue(status, true);
-
-                // Keep critical flags set for OTHER missing recipe ingredients.
-                IList items = InputStatuses.GetValue(status) as IList;
-                bool anyMissingCritical = false;
-                if (items != null)
-                {
-                    int n = Math.Min(items.Count, blueprint.supplies.Length);
-                    for (int i = 0; i < n; i++)
-                    {
-                        if (blueprint.supplies[i].isCritical &&
-                            (bool)InputMissing.GetValue(items[i]))
-                        {
-                            anyMissingCritical = true;
-                            break;
-                        }
-                    }
-                }
-                CriticalMissing.SetValue(status, anyMissingCritical);
-                if (missingAfter == 0) __result = false;
-            }
-            catch (Exception ex)
-            {
-                // Do not swallow first critical error: a user-facing BepInEx log
-                // is essential to diagnose changes in Unturned's client runtime.
                 if (!_didLogFailure)
                 {
                     _didLogFailure = true;
-                    UnityEngine.Debug.LogError("[SmartCraft] Failed to calculate Y-menu quantities: " + ex);
+                    UnityEngine.Debug.LogError("[SmartCraft] v1.3-alpha3: unsupported Unturned crafting status reflection ABI");
+                }
+                return;
+            }
+            try
+            {
+                object status = StatusParam.GetValue(__args[0]);
+                if (status == null) return;
+                Blueprint bp = BlueprintField.GetValue(status) as Blueprint;
+                if (bp == null || bp.Operation != EBlueprintOperation.None || bp.transferState) return;
+                BlueprintSupply[] supplies = bp.supplies;
+                IList inputStatuses = InputItemsField.GetValue(status) as IList;
+                if (supplies == null || inputStatuses == null ||
+                    inputStatuses.Count != supplies.Length) return;
+
+                int scrapRows = 0;
+                int rowIndex = -1;
+                for (int i = 0; i < supplies.Length; i++)
+                {
+                    ItemAsset asset = supplies[i].FindItemAsset();
+                    if (asset == null) continue;
+                    if (asset.id == Scrap10 || asset.id == Scrap100) return;
+                    if (asset.id != Scrap) continue;
+                    // This stage supports original consumable Scrap materials,
+                    // not alternative nonconsuming tools or special ammo amounts.
+                    if (!supplies[i].ShouldConsume ||
+                        supplies[i].CountingMethod != ECraftingInputCountingMethod.TotalItems) return;
+                    scrapRows++;
+                    rowIndex = i;
+                }
+                if (scrapRows != 1) return; // Avoid double allocation across duplicate supply rows.
+
+                var inv = __instance.player.inventory;
+                int tens = Count(inv, Scrap10);
+                int hundreds = Count(inv, Scrap100);
+                int bundleUnits = tens * 10 + hundreds * 100;
+                if (bundleUnits <= 0) return;
+
+                object row = inputStatuses[rowIndex];
+                int loose = (int)TotalField.GetValue(row);
+                int required = supplies[rowIndex].amount;
+                int previousMissing = Math.Max(0, required - loose);
+                int combined = checked(loose + bundleUnits);
+                int currentMissing = Math.Max(0, required - combined);
+                TotalField.SetValue(row, combined);
+                IsMissingField.SetValue(row, currentMissing > 0);
+
+                int previousTotalMissing = (int)MissingCountField.GetValue(status);
+                MissingCountField.SetValue(status,
+                    Math.Max(0, previousTotalMissing - previousMissing + currentMissing));
+                HasAnyInputField.SetValue(status, true);
+
+                bool criticalMissing = false;
+                for (int i = 0; i < supplies.Length; i++)
+                {
+                    if (supplies[i].isCritical &&
+                        (bool)IsMissingField.GetValue(inputStatuses[i]))
+                    {
+                        criticalMissing = true;
+                        break;
+                    }
+                }
+                CriticalMissingField.SetValue(status, criticalMissing);
+
+                if (tens != _lastReportedTens || hundreds != _lastReportedHundreds)
+                {
+                    _lastReportedTens = tens;
+                    _lastReportedHundreds = hundreds;
+                    UnityEngine.Debug.LogWarning("[SmartCraft] v1.3-alpha3 Y-menu Scrap: " +
+                        loose + " loose + " + tens + " x10 + " + hundreds +
+                        " x100 = " + combined + " usable Scrap");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!_didLogFailure)
+                {
+                    _didLogFailure = true;
+                    UnityEngine.Debug.LogError("[SmartCraft] v1.3-alpha3 crafting status failure: " + ex);
                 }
             }
         }
