@@ -225,7 +225,6 @@ namespace SmartCraft.Server
 
                 var supplyChanges=new List<BlueprintSupply>();
                 var outputs=new List<BlueprintOutput>(blueprint.outputs);
-                bool anyEquivalence=false;
                 foreach(MaterialNeed need in needs.Values)
                 {
                     var available=new List<SmartCraft.Shared.AvailableStack>();
@@ -249,11 +248,9 @@ namespace SmartCraft.Server
                     foreach(var chosen in plan.Selected)
                     {
                         supplyChanges.Add(CreateBundleSupply(chosen.Key,chosen.Value));
-                        if(chosen.Key!=need.BaseId)anyEquivalence=true;
                     }
                     ReturnChange(need.BaseId,plan.Excess,outputs);
                 }
-                if(!anyEquivalence)return;
                 var replacement=(Blueprint)CloneMethod.Invoke(blueprint,null);
                 SuppliesField.SetValue(replacement,supplyChanges.ToArray());
                 OutputsField.SetValue(replacement,outputs.ToArray());
