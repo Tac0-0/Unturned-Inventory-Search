@@ -223,10 +223,33 @@ namespace SmartCraft.Server
                     {originalsEnough=false;break;}
                 if(originalsEnough)return; // preserve vanilla for normal crafting
 
+                // Replace only the material families whose exact original
+                // input IDs are missing. Leave all other BlueprintSupply
+                // objects untouched so vanilla item quality and prioritization
+                // rules remain intact for non-converted ingredients.
+                var affected=new HashSet<ushort>();
+                foreach(var originalCount in originalCounts)
+                {
+                    if(CountOf(counts,originalCount.Key)>=originalCount.Value)continue;
+                    ushort affectedBase;int ignored;
+                    SmartCraft.Shared.StackCatalog.TryMap(
+                        originalCount.Key,out affectedBase,out ignored);
+                    if(SmartCraft.Shared.StackCatalog.ForBase(affectedBase)==null)
+                        return; // unrelated shortage, let native crafting refuse
+                    affected.Add(affectedBase);
+                }
                 var supplyChanges=new List<BlueprintSupply>();
+                foreach(BlueprintSupply native in original)
+                {
+                    ItemAsset asset=native.FindItemAsset();
+                    ushort baseId;int ignored;
+                    SmartCraft.Shared.StackCatalog.TryMap(asset.id,out baseId,out ignored);
+                    if(!affected.Contains(baseId))supplyChanges.Add(native);
+                }
                 var outputs=new List<BlueprintOutput>(blueprint.outputs);
                 foreach(MaterialNeed need in needs.Values)
                 {
+                    if(!affected.Contains(need.BaseId))continue;
                     var available=new List<SmartCraft.Shared.AvailableStack>();
                     int loose=CountOf(counts,need.BaseId);
                     if(loose>0 && SmartCraft.Shared.StackCatalog.IsAvailable(need.BaseId))
