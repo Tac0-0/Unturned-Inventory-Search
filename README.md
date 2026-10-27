@@ -1,3 +1,5 @@
+> **v1.3.0:** optional experimental SmartCraft for Scrap x10/x100 in Unturned's Y crafting menu with the matching Rocket server plugin. Other stacked materials and bulk crafting are not yet supported. See [release notes](RELEASE_NOTES_v1.3.0.md).
+
 # Unturned Inventory Search
 
 A lightweight, **client-side** inventory search mod for [Unturned](https://store.steampowered.com/app/304930/Unturned/).
@@ -6,7 +8,7 @@ A lightweight, **client-side** inventory search mod for [Unturned](https://store
 
 ## ⬇️ Easy installation (Windows)
 
-### **[👉 DOWNLOAD THE INSTALLER ZIP (v1.2.1)](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.2.1.zip)**
+### **[👉 DOWNLOAD THE INSTALLER ZIP (v1.2.1)](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.3.0.zip)**
 
 **No coding, compiling, or manual BepInEx setup needed.**
 
@@ -16,7 +18,7 @@ A lightweight, **client-side** inventory search mod for [Unturned](https://store
 
 **Want to remove it?** Run **`UNINSTALL.cmd`** from the extracted folder. The installer and uninstaller were tested on one Windows laptop.
 
-**Install says “extract ZIP first” even though you already did?** Use the [installer ZIP linked above](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.2.1.zip), **not** GitHub's green `Code → Download ZIP`. The patched installer can recover a missing DLL by downloading the official release asset and checking its SHA-256. If that still fails, check Windows Security → Protection history for a quarantined `InventorySearchPrototype.dll` and share the exact error output. Don't disable antivirus to install this mod.
+**Install says “extract ZIP first” even though you already did?** Use the [installer ZIP linked above](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.3.0.zip), **not** GitHub's green `Code → Download ZIP`. The patched installer can recover a missing DLL by downloading the official release asset and checking its SHA-256. If that still fails, check Windows Security → Protection history for a quarantined `InventorySearchPrototype.dll` and share the exact error output. Don't disable antivirus to install this mod.
 
 > This is a BepInEx client mod, not an automatic Steam Workshop download. The installer includes a permanent full-package updater, automatically scheduled at login and daily. No new ZIP downloads are needed for future releases.
 

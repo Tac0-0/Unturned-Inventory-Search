@@ -45,13 +45,13 @@ if ($Action -eq 'PromptOptIn') {
         exit 0
     }
     Write-Host ''
-    Write-Host 'Inventory Search v1.2: SmartCraft optional add-on preference'
+    Write-Host 'Inventory Search v1.3: SmartCraft optional add-on'
     Write-Host 'Are you a member of the private Unturned server using SmartCraft?'
-    Write-Host 'SmartCraft crafting is NOT implemented in v1.2; engine development begins in v1.3.'
+    Write-Host 'Experimental SmartCraft currently supports Metal Scrap bundles x10 and x100.'
     $answer = Read-Host 'Would you like to enable SmartCraft for future releases? [y/N]'
     if ([string]$answer -match '^[Yy]$') {
         Save-AddonPreference $true
-        Write-Host 'SmartCraft selected for future versions. No crafting DLL is installed by v1.2.' -ForegroundColor Green
+        Write-Host 'SmartCraft opted in. The installer will add the optional client DLL.' -ForegroundColor Green
     } else {
         Save-AddonPreference $false
         Write-Host 'SmartCraft declined. Inventory Search continues normally.'
@@ -92,8 +92,7 @@ if ($Action -eq 'Uninstall') {
     exit 0
 }
 if ($Action -eq 'Install') {
-    # v1.2 is a preference-only release. Never download a placeholder DLL or
-    # claim the crafting engine exists before the v1.3 implementation.
+    # v1.3 ships the real optional client DLL; v1.2 only saved the preference.
     $installedVersion = [version]'0.0.0'
     if ([string]$config.installedVersion -match '^v?(\d+)\.(\d+)\.(\d+)$') {
         $installedVersion = [version]([string]$config.installedVersion).TrimStart('v')
@@ -101,6 +100,27 @@ if ($Action -eq 'Install') {
     if ($installedVersion -lt [version]'1.3.0') {
         Save-AddonPreference $true
         Write-Host 'SmartCraft opted in for future updates. There is no crafting DLL in v1.2.' -ForegroundColor Green
+        exit 0
+    }
+    # Prefer the SHA-256-verified local add-on cache installed with v1.3.
+    # This also works for GitHub pre-releases, which the stable updater skips.
+    $cached = Join-Path $stateDir 'payload\addon\SmartCraftCraftingAddon.dll'
+    $installedManifest = Join-Path $stateDir 'installed-manifest.json'
+    if ((Test-Path -LiteralPath $cached -PathType Leaf) -and
+        (Test-Path -LiteralPath $installedManifest -PathType Leaf)) {
+        $localManifest = Get-Content -LiteralPath $installedManifest -Raw | ConvertFrom-Json
+        $cachedEntries = @($localManifest.files | Where-Object {
+            $_.source -ceq 'payload/addon/SmartCraftCraftingAddon.dll' -and
+            $_.target -ceq 'app/payload/addon/SmartCraftCraftingAddon.dll'
+        })
+        if ($cachedEntries.Count -ne 1 -or
+            (Get-FileHash -LiteralPath $cached -Algorithm SHA256).Hash -ne
+                ([string]$cachedEntries[0].sha256).ToUpperInvariant()) {
+            throw 'Locally cached SmartCraft add-on checksum disagrees with installed manifest.'
+        }
+        Copy-Item -LiteralPath $cached -Destination $addonDll -Force
+        Save-AddonPreference $true
+        Write-Host 'SmartCraft add-on installed from verified local cache.' -ForegroundColor Green
         exit 0
     }
     $updater = Join-Path $stateDir 'Update.ps1'

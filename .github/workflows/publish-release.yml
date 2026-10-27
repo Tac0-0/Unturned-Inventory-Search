@@ -57,11 +57,16 @@ jobs:
           set -euo pipefail
           tag="v$RELEASE_VERSION"
           zip="release-assets/InventorySearch-OneClick-$tag.zip"
+          flags=()
+          # v1.3.0 includes an experimental, Scrap-only addon and must not
+          # roll out automatically to users of the stable v1.2.1 updater.
+          if [ "$tag" = "v1.3.0" ]; then flags+=(--prerelease); fi
+          files=(release-assets/InventorySearchPrototype.dll "$zip" release-assets/SHA256SUMS.txt)
+          if [ -f release-assets/SmartCraftServerPlugin.dll ]; then
+            files+=(release-assets/SmartCraftServerPlugin.dll)
+          fi
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" \
-              release-assets/InventorySearchPrototype.dll \
-              "$zip" \
-              release-assets/SHA256SUMS.txt --clobber
+            gh release upload "$tag" "${files[@]}" --clobber
           else
             notes="RELEASE_NOTES_$tag.md"
             if [ -f "$notes" ]; then
@@ -69,12 +74,12 @@ jobs:
                 --target "$GITHUB_SHA" \
                 --title "Inventory Search $tag" \
                 --notes-file "$notes" \
-                release-assets/InventorySearchPrototype.dll "$zip" release-assets/SHA256SUMS.txt
+                "${flags[@]}" "${files[@]}"
             else
               gh release create "$tag" \
                 --target "$GITHUB_SHA" \
                 --title "Inventory Search $tag" \
                 --notes "Full Inventory Search release including DLL, updater scripts and complete update manifest." \
-                release-assets/InventorySearchPrototype.dll "$zip" release-assets/SHA256SUMS.txt
+                "${flags[@]}" "${files[@]}"
             fi
           fi
