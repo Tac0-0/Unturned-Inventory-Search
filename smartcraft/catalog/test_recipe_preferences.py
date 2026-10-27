@@ -13,8 +13,8 @@ catalog = json.loads((root / "installed-mod-bundles.v1.json").read_text())
 policy = json.loads((root / "recipe-preferences.v1.json").read_text())
 source = (root.parent / "shared" / "RecipeCleanupPolicy.cs").read_text()
 bundles = [tuple(row) for group in catalog["sources"].values() for row in group["items"]]
-assert len(bundles) == 451
-assert len({row[0] for row in bundles}) == 451
+assert len(bundles) == 489
+assert len({row[0] for row in bundles}) == 489
 
 rules = policy["inferior_bundle_outputs"]
 assert len(rules) == 20
