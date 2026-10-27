@@ -135,6 +135,14 @@ namespace SmartCraft.Server
             if (blueprint.Operation != EBlueprintOperation.None || blueprint.transferState) return;
             try
             {
+                // Mirror the client-side recipe visibility filter. This
+                // server-side rejection prevents hidden inferior recipes from
+                // being invoked by a crafted/modified network request.
+                if (SmartCraft.Shared.RecipeCleanupPolicy.ShouldSuppressBlueprint(blueprint))
+                {
+                    shouldAllow = false;
+                    return;
+                }
                 BlueprintSupply[] originals = blueprint.supplies;
                 if (originals == null || originals.Length == 0) return;
 
