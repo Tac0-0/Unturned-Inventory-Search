@@ -1,4 +1,4 @@
-// SmartCraft v1.3 experimental SERVER engine. Not deployed to production.
+// SmartCraft v1.4.0 experimental SERVER engine. Not deployed to production.
 // Uses Unturned's own pre-craft event to substitute an in-memory blueprint.
 // No new Workshop assets, client-side recipes, or replacement item IDs.
 using System;
@@ -35,7 +35,7 @@ namespace SmartCraft.Server
                 return;
             }
             PlayerCrafting.OnCraftBlueprintRequestedV2 += RewriteCraft;
-            Logger.Log("[SmartCraft] Original-bundle crafting handler installed (experimental, scrap-only).");
+            Logger.Log("[SmartCraft] Original-bundle crafting handler installed (experimental; scrap-only substitution + recipe cleanup).");
         }
 
         protected override void Unload()
