@@ -66,12 +66,18 @@ with tempfile.TemporaryDirectory(prefix="inventory-search-build-") as work:
 
     (root / "README.md").write_text(
         f"# Inventory Search {tag}\n\n"
-        "Extract the ZIP, close Unturned, and run INSTALL.cmd once. "
+        "This README belongs to the downloaded release snapshot. After you update, "
+        "the old extracted folder and its README keep their original version name.\n\n"
+        "**Active installation:** %LOCALAPPDATA%\\InventorySearch\\\n"
+        "**Current README:** %LOCALAPPDATA%\\InventorySearch\\README.md\n"
+        "**Check installed version:** %LOCALAPPDATA%\\InventorySearch\\SHOW-VERSION.cmd\n\n"
+        "For a new installation, extract the ZIP, close Unturned and run INSTALL.cmd. "
         "BepInEx 5 is installed if needed. Launch without BattlEye.\n\n"
-        "After installing, you can delete this downloaded ZIP. "
-        "The permanent updater runs at login and daily, or use "
-        "Check for Updates in the Windows Start menu. "
-        "Updates install the complete mod and updater from verified GitHub ZIP releases.\n\n"
+        "For updates, close Unturned and run the permanently installed "
+        "UPDATE-NOW.cmd or use Start Menu > Inventory Search > Check for Updates. "
+        "That action downloads and reconciles the COMPLETE new package. "
+        "The originally downloaded ZIP folder is not modified and can safely be "
+        "deleted after installation.\n\n"
         "Uninstall from %LOCALAPPDATA%\\InventorySearch\\UNINSTALL.cmd.\n",
         encoding="utf-8"
     )

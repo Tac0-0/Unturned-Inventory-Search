@@ -275,6 +275,8 @@ try {
     }
     if (-not $needsChanges) {
         Write-Host 'Inventory Search is already up to date (complete package verified).'
+        Write-Host ('Live installation: ' + $stateDir + ' (version ' + $tag + ')')
+        Write-Host 'An old extracted installer folder keeps its old versioned name and README.'
         exit 0
     }
     if (Get-Process -Name Unturned -ErrorAction SilentlyContinue) {
@@ -376,6 +378,8 @@ try {
         } catch { Write-Warning ('Could not retain optional previous-DLL backup: ' + $_.Exception.Message) }
     }
     Write-Host ('Inventory Search updated from official release: ' + $tag)
+    Write-Host ('Active installed README: ' + (Join-Path $stateDir 'README.md'))
+    Write-Host 'Downloaded/extracted installer folders are snapshots and are not renamed by updates.'
     Write-Host ('Reconciled complete release ZIP: ' + $files.Count +
                 ' current files, ' + $obsolete.Count + ' retired owned paths.')
 } finally {
