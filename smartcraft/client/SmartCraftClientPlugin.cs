@@ -16,6 +16,9 @@ namespace SmartCraft.Client
     public sealed class SmartCraftClientPlugin : BaseUnityPlugin
     {
         private Harmony _harmony;
+        // Unlike the MonoBehaviour host, this log source survives scene loading.
+        internal static readonly BepInEx.Logging.ManualLogSource HookLog =
+            BepInEx.Logging.Logger.CreateLogSource("SmartCraft Hooks");
 
         private void Awake()
         {
@@ -27,7 +30,7 @@ namespace SmartCraft.Client
                 var visibilityHook = AccessTools.Method(typeof(PlayerCrafting), "GatherUniqueInputItems");
                 bool statusPatched = Harmony.GetPatchInfo(statusHook) != null;
                 bool visibilityPatched = Harmony.GetPatchInfo(visibilityHook) != null;
-                Logger.LogWarning("SmartCraft v1.3 alpha3 initialized: Y-menu visibility patched=" +
+                Logger.LogWarning("SmartCraft v1.3 alpha4 initialized: Y-menu visibility patched=" +
                     visibilityPatched + ", bundle count patched=" + statusPatched);
             }
             catch (Exception ex)
@@ -39,6 +42,17 @@ namespace SmartCraft.Client
 
         private void OnDestroy()
         {
+            // Unturned destroys BepInEx's shared plugin host at frame 0 while
+            // Application.isPlaying remains true (confirmed by Inventory
+            // Search's frame-0 logs). Removing the Harmony patches here made
+            // SmartCraft inert after a successful "patched=True" startup.
+            if (UnityEngine.Application.isPlaying)
+            {
+                HookLog.LogWarning("Host destroyed during gameplay; keeping Harmony patches active. frame=" +
+                    UnityEngine.Time.frameCount);
+                return;
+            }
+            HookLog.LogInfo("Game shutting down; unpatching SmartCraft.");
             if (_harmony != null) _harmony.UnpatchSelf();
         }
     }
@@ -53,14 +67,20 @@ namespace SmartCraft.Client
     [HarmonyPatch(typeof(PlayerCrafting), "GatherUniqueInputItems")]
     internal static class CraftingMenuVisibilityPatch
     {
-        private static readonly ItemAsset ScrapAsset =
-            Assets.find(EAssetType.ITEM, (ushort)67) as ItemAsset;
+        private static bool _reportedOnce;
 
         private static void Postfix(HashSet<ItemAsset> results)
         {
+            if (!_reportedOnce)
+            {
+                _reportedOnce = true;
+                SmartCraftClientPlugin.HookLog.LogInfo(
+                    "Y-menu visibility hook fired after startup.");
+            }
             if (results == null) return;
-            ItemAsset baseAsset = ScrapAsset ??
-                Assets.find(EAssetType.ITEM, (ushort)67) as ItemAsset;
+            // Asset lookup must happen AFTER Unturned has loaded items, not in
+            // a static class initializer during the BepInEx bootstrap.
+            ItemAsset baseAsset = Assets.find(EAssetType.ITEM, (ushort)67) as ItemAsset;
             if (baseAsset == null) return;
             bool hasBundle = false;
             foreach (ItemAsset asset in results)
@@ -87,6 +107,8 @@ namespace SmartCraft.Client
         private const ushort Scrap10 = 49101;
         private const ushort Scrap100 = 49102;
         private static bool _didLogFailure;
+        private static bool _loggedInvocation;
+        private static bool _loggedFirstScrap;
         private static int _lastReportedTens = -1, _lastReportedHundreds = -1;
 
         private static readonly Type ParamsType =
@@ -132,6 +154,12 @@ namespace SmartCraft.Client
 
         private static void Postfix(PlayerCrafting __instance, object[] __args)
         {
+            if (!_loggedInvocation)
+            {
+                _loggedInvocation = true;
+                SmartCraftClientPlugin.HookLog.LogInfo(
+                    "Y-menu dynamic status hook fired after startup.");
+            }
             if (__instance == null || __args == null || __args.Length == 0 ||
                 StatusParam == null || BlueprintField == null || InputItemsField == null ||
                 MissingCountField == null || CriticalMissingField == null ||
@@ -140,7 +168,8 @@ namespace SmartCraft.Client
                 if (!_didLogFailure)
                 {
                     _didLogFailure = true;
-                    UnityEngine.Debug.LogError("[SmartCraft] v1.3-alpha3: unsupported Unturned crafting status reflection ABI");
+                    SmartCraftClientPlugin.HookLog.LogError(
+                        "SmartCraft alpha4: unsupported Unturned crafting status reflection ABI.");
                 }
                 return;
             }
@@ -175,6 +204,15 @@ namespace SmartCraft.Client
                 var inv = __instance.player.inventory;
                 int tens = Count(inv, Scrap10);
                 int hundreds = Count(inv, Scrap100);
+                if (!_loggedFirstScrap)
+                {
+                    _loggedFirstScrap = true;
+                    SmartCraftClientPlugin.HookLog.LogWarning(
+                        "SmartCraft alpha4 first Scrap recipe: loose=" +
+                        TotalField.GetValue(inputStatuses[rowIndex]) +
+                        " tens=" + tens + " hundreds=" + hundreds +
+                        " required=" + supplies[rowIndex].amount);
+                }
                 int bundleUnits = tens * 10 + hundreds * 100;
                 if (bundleUnits <= 0) return;
 
@@ -208,7 +246,7 @@ namespace SmartCraft.Client
                 {
                     _lastReportedTens = tens;
                     _lastReportedHundreds = hundreds;
-                    UnityEngine.Debug.LogWarning("[SmartCraft] v1.3-alpha3 Y-menu Scrap: " +
+                    SmartCraftClientPlugin.HookLog.LogWarning("SmartCraft alpha4 Y-menu Scrap: " +
                         loose + " loose + " + tens + " x10 + " + hundreds +
                         " x100 = " + combined + " usable Scrap");
                 }
@@ -218,7 +256,7 @@ namespace SmartCraft.Client
                 if (!_didLogFailure)
                 {
                     _didLogFailure = true;
-                    UnityEngine.Debug.LogError("[SmartCraft] v1.3-alpha3 crafting status failure: " + ex);
+                    SmartCraftClientPlugin.HookLog.LogError("SmartCraft alpha4 crafting status failure: " + ex);
                 }
             }
         }
