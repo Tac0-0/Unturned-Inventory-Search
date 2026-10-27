@@ -116,8 +116,6 @@ namespace SmartCraft.Client
         private const ushort Scrap100 = 49102;
         private static bool _didLogFailure;
         private static bool _loggedInvocation;
-        private static bool _loggedFirstScrap;
-        private static int _lastReportedTens = -1, _lastReportedHundreds = -1;
 
         private static readonly Type ParamsType =
             typeof(PlayerCrafting).Assembly.GetType("SDG.Unturned.UpdateBlueprintStatusParameters");
@@ -188,6 +186,16 @@ namespace SmartCraft.Client
                 BlueprintSupply[] supplies=bp.supplies;
                 IList inputStatuses=InputItemsField.GetValue(status) as IList;
                 if(supplies==null || inputStatuses==null || supplies.Length!=inputStatuses.Count)return;
+                // Use the same fail-closed eligibility gate as the server.
+                // Do not partially rewrite the status before discovering an
+                // unsupported supply in a later recipe row.
+                foreach(BlueprintSupply supply in supplies)
+                {
+                    ItemAsset asset=supply==null ? null : supply.FindItemAsset();
+                    if(asset==null || !supply.ShouldConsume ||
+                        supply.CountingMethod!=ECraftingInputCountingMethod.TotalItems ||
+                        supply.amount<=0)return;
+                }
                 var inventory=new Dictionary<ushort,int>();
                 PlayerInventory inv=__instance.player.inventory;
                 for(byte page=PlayerInventory.SLOTS;page<PlayerInventory.PAGES;page++)
