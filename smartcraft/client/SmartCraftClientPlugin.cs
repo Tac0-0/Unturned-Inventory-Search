@@ -261,4 +261,17 @@ namespace SmartCraft.Client
             }
         }
     }
+    // v1.4 DEV: hide inferior production recipes consistently with the
+    // Rocket server's authoritative rejection. Original assets remain intact.
+    [HarmonyPatch(typeof(PlayerCrafting), "IsBlueprintPermanentlyDisabled")]
+    internal static class RecipeCleanupVisibilityPatch
+    {
+        private static void Postfix(Blueprint blueprint, ref bool __result)
+        {
+            if (__result) return;
+            if (SmartCraft.Shared.RecipeCleanupPolicy.ShouldSuppressBlueprint(blueprint))
+                __result = true;
+        }
+    }
+
 }
