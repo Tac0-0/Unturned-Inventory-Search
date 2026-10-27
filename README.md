@@ -1,12 +1,14 @@
+> **v1.3.0:** optional experimental SmartCraft for Scrap x10/x100 in Unturned's Y crafting menu with the matching Rocket server plugin. Other stacked materials and bulk crafting are not yet supported. See [release notes](RELEASE_NOTES_v1.3.0.md).
+
 # Unturned Inventory Search
 
 A lightweight, **client-side** inventory search mod for [Unturned](https://store.steampowered.com/app/304930/Unturned/).
 
-> **v1.2.1** is the latest stable release. v1.2 introduces a one-time **SmartCraft opt-in question** for private-server players; the crafting engine is **not included** until a future v1.3+ release. Modern v1.0.0+ installations include a one-time installer and a full-package self-updater. The v0.1.6 search behavior has been tested in singleplayer and private multiplayer without BattlEye. Installation and complete-package update behavior have Windows PowerShell 5.1 automated tests; v1.0.0 gameplay validation on friends' PCs is ongoing.
+> **v1.2.1** is the latest stable release. v1.2 introduced a one-time SmartCraft preference; the v1.3.0 pre-release offers a manual, experimental Scrap-only add-on. Modern v1.0.0+ installations include a one-time installer and a full-package self-updater. The v0.1.6 search behavior has been tested in singleplayer and private multiplayer without BattlEye. Installation and complete-package update behavior have Windows PowerShell 5.1 automated tests; v1.0.0 gameplay validation on friends' PCs is ongoing.
 
 ## ⬇️ Easy installation (Windows)
 
-### **[👉 DOWNLOAD THE INSTALLER ZIP (v1.2.1)](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.2.1.zip)**
+### **[👉 DOWNLOAD THE STABLE INSTALLER ZIP (v1.2.1)](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.2.1/InventorySearch-OneClick-v1.2.1.zip)**
 
 **No coding, compiling, or manual BepInEx setup needed.**
 
@@ -16,7 +18,7 @@ A lightweight, **client-side** inventory search mod for [Unturned](https://store
 
 **Want to remove it?** Run **`UNINSTALL.cmd`** from the extracted folder. The installer and uninstaller were tested on one Windows laptop.
 
-**Install says “extract ZIP first” even though you already did?** Use the [installer ZIP linked above](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.1.0/InventorySearch-OneClick-v1.2.1.zip), **not** GitHub's green `Code → Download ZIP`. The patched installer can recover a missing DLL by downloading the official release asset and checking its SHA-256. If that still fails, check Windows Security → Protection history for a quarantined `InventorySearchPrototype.dll` and share the exact error output. Don't disable antivirus to install this mod.
+**Install says “extract ZIP first” even though you already did?** Use the [installer ZIP linked above](https://github.com/Tac0-0/Unturned-Inventory-Search/releases/download/v1.2.1/InventorySearch-OneClick-v1.2.1.zip), **not** GitHub's green `Code → Download ZIP`. The patched installer can recover a missing DLL by downloading the official release asset and checking its SHA-256. If that still fails, check Windows Security → Protection history for a quarantined `InventorySearchPrototype.dll` and share the exact error output. Don't disable antivirus to install this mod.
 
 > This is a BepInEx client mod, not an automatic Steam Workshop download. The installer includes a permanent full-package updater, automatically scheduled at login and daily. No new ZIP downloads are needed for future releases.
 
@@ -32,7 +34,7 @@ The first-time installer asks: **"Would you like to enable SmartCraft for future
 
 To see the choice after upgrading from an earlier release, open **Inventory Search → Check for Updates** again, or run `%LOCALAPPDATA%\\InventorySearch\\CRAFTING-ADDON.cmd`. To opt out or remove a future crafting add-on independently, use `%LOCALAPPDATA%\\InventorySearch\\UNINSTALL-CRAFTING.cmd`. Future updates respect the saved preference.
 
-Crafting engine development will start with v1.3.0 and later.
+A v1.3.0 pre-release now offers experimental Scrap-only bundle crafting; additional materials remain unfinished.
 
 ## Features
 

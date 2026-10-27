@@ -38,6 +38,12 @@ with tempfile.TemporaryDirectory(prefix="inventory-search-build-") as work:
     (root / "payload" / "InventorySearchPrototype.sha256").write_text(digest + "\n", encoding="ascii")
     if (release_dir / "mod").is_dir():
         shutil.copytree(release_dir / "mod", root / "payload" / "mod", dirs_exist_ok=True)
+        # Keep a managed local copy for opt-in reinstalls while this GitHub
+        # release is marked pre-release and skipped by the stable updater.
+        addon = release_dir / "mod" / "SmartCraftCraftingAddon.dll"
+        if addon.is_file():
+            (root / "payload" / "addon").mkdir(exist_ok=True)
+            shutil.copy2(addon, root / "payload" / "addon" / addon.name)
 
     conf_path = root / "CONFIG.json"
     config = json.loads(conf_path.read_text(encoding="utf-8-sig"))
@@ -131,6 +137,11 @@ with tempfile.TemporaryDirectory(prefix="inventory-search-build-") as work:
             raise SystemExit("ZIP CRC verification failed")
     shutil.copy2(binary_path, assets / "InventorySearchPrototype.dll")
     names = ["InventorySearchPrototype.dll", archive.name]
+    # Separately publish Rocket server DLL, never place it in client ZIP.
+    server_binary = release_dir / "server" / "SmartCraftServerPlugin.dll"
+    if server_binary.is_file():
+        shutil.copy2(server_binary, assets / "SmartCraftServerPlugin.dll")
+        names.append("SmartCraftServerPlugin.dll")
     (assets / "SHA256SUMS.txt").write_text(
         "".join(f"{hashlib.sha256((assets / n).read_bytes()).hexdigest()}  {n}\n" for n in names),
         encoding="ascii"

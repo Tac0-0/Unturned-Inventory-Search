@@ -305,7 +305,29 @@ Write-Host ''
 Write-Host 'DONE. Launch Unturned WITHOUT BattlEye. No server installation is required.' -ForegroundColor Green
 
 # Ask once during a NEW INSTALL; reinstallation keeps the old saved choice.
-# v1.2 only records intent. There is intentionally no SmartCraft DLL in v1.2.
+# v1.3 includes an optional, experimentally verified Scrap crafting DLL.
 & (Join-Path $stateDir 'Manage-CraftingAddon.ps1') -Action PromptOptIn
+# The fresh installer installs the addon immediately when opted in. Its
+# checksum is authenticated by the release manifest, not an external download.
+$choiceFile = Join-Path $stateDir 'crafting-addon.json'
+if (Test-Path -LiteralPath $choiceFile -PathType Leaf) {
+    $chosen = Get-Content -LiteralPath $choiceFile -Raw | ConvertFrom-Json
+    if ($chosen.enabled -eq $true) {
+        $optional = @($installManifest.optionalFiles | Where-Object {
+            $_.source -ceq 'payload/mod/SmartCraftCraftingAddon.dll' -and
+            $_.target -ceq 'plugin/SmartCraftCraftingAddon.dll' -and
+            $_.optionalFeature -ceq 'smartcraft-crafting'
+        })
+        if ($optional.Count -ne 1) { throw 'Opted-in SmartCraft DLL missing from release manifest.' }
+        $addonSource = Join-Path $here 'payload\mod\SmartCraftCraftingAddon.dll'
+        if (-not (Test-Path -LiteralPath $addonSource -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $addonSource -Algorithm SHA256).Hash -ne
+                ([string]$optional[0].sha256).ToUpperInvariant()) {
+            throw 'SmartCraft add-on integrity check failed.'
+        }
+        Copy-Item -LiteralPath $addonSource -Destination (Join-Path $pluginDirectory 'SmartCraftCraftingAddon.dll') -Force
+        Write-Host 'Optional experimental SmartCraft installed (Scrap bundles only).' -ForegroundColor Green
+    }
+}
 Write-Host 'Use Manage SmartCraft Add-on to change this preference later.'
 Write-Host 'UNINSTALL-CRAFTING.cmd removes ONLY the optional add-on.'
