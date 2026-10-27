@@ -1,4 +1,4 @@
-// Generated from smartcraft/catalog/installed-mod-bundles.v1.json (v1.4.1).
+// Generated from smartcraft/catalog/installed-mod-bundles.v1.json (v1.4.2).
 // Snapshot: item IDs verified against installed Workshop packs and reversible fruitcrate recipes. Missing assets
 // are ignored at runtime. Item variant represents exactly N BASE ITEM units.
 using System;
