@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - 'scripts/package-release.py'
+      - 'src/**'
+      - 'dist/**'
+      - 'smartcraft/**'
       - '.github/workflows/test-release-packager.yml'
   workflow_dispatch:
 
