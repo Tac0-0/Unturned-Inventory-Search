@@ -1,0 +1,385 @@
+{
+  "schema": 1,
+  "rule": "hide only exact pure stacking blueprints producing a strictly larger-area bundle for the same base item and number of units; always preserve all unstack recipes",
+  "explicit_suppression": [
+    {
+      "input": [
+        [
+          72,
+          1
+        ]
+      ],
+      "output": [
+        [
+          67,
+          3
+        ]
+      ],
+      "reason": "Requested inefficient vanilla Can salvage. Preserves 4 Scrap -> Can."
+    }
+  ],
+  "inferior_bundle_outputs": [
+    {
+      "inferior": 1909,
+      "family": 67,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49101
+      ]
+    },
+    {
+      "inferior": 1913,
+      "family": 66,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49103
+      ]
+    },
+    {
+      "inferior": 1915,
+      "family": 74,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49121
+      ]
+    },
+    {
+      "inferior": 10162,
+      "family": 67,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49101
+      ]
+    },
+    {
+      "inferior": 10163,
+      "family": 67,
+      "units": 100,
+      "size": [
+        3,
+        3
+      ],
+      "best_size": [
+        [
+          2,
+          2
+        ]
+      ],
+      "preferred_ids": [
+        49102
+      ]
+    },
+    {
+      "inferior": 10175,
+      "family": 37,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49115
+      ]
+    },
+    {
+      "inferior": 10176,
+      "family": 74,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49121
+      ]
+    },
+    {
+      "inferior": 10177,
+      "family": 75,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49111
+      ]
+    },
+    {
+      "inferior": 10178,
+      "family": 66,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49103
+      ]
+    },
+    {
+      "inferior": 10179,
+      "family": 70,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49113
+      ]
+    },
+    {
+      "inferior": 10180,
+      "family": 516,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49105
+      ]
+    },
+    {
+      "inferior": 10181,
+      "family": 39,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49117
+      ]
+    },
+    {
+      "inferior": 10182,
+      "family": 41,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49119
+      ]
+    },
+    {
+      "inferior": 10183,
+      "family": 69,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49109
+      ]
+    },
+    {
+      "inferior": 10184,
+      "family": 73,
+      "units": 10,
+      "size": [
+        2,
+        2
+      ],
+      "best_size": [
+        [
+          1,
+          1
+        ]
+      ],
+      "preferred_ids": [
+        49107
+      ]
+    },
+    {
+      "inferior": 10190,
+      "family": 41,
+      "units": 100,
+      "size": [
+        3,
+        3
+      ],
+      "best_size": [
+        [
+          2,
+          2
+        ]
+      ],
+      "preferred_ids": [
+        49120
+      ]
+    },
+    {
+      "inferior": 10191,
+      "family": 39,
+      "units": 100,
+      "size": [
+        3,
+        3
+      ],
+      "best_size": [
+        [
+          2,
+          2
+        ]
+      ],
+      "preferred_ids": [
+        49118
+      ]
+    },
+    {
+      "inferior": 10192,
+      "family": 37,
+      "units": 100,
+      "size": [
+        3,
+        3
+      ],
+      "best_size": [
+        [
+          2,
+          2
+        ]
+      ],
+      "preferred_ids": [
+        49116
+      ]
+    },
+    {
+      "inferior": 10193,
+      "family": 74,
+      "units": 100,
+      "size": [
+        3,
+        3
+      ],
+      "best_size": [
+        [
+          2,
+          2
+        ]
+      ],
+      "preferred_ids": [
+        49122
+      ]
+    },
+    {
+      "inferior": 10195,
+      "family": 66,
+      "units": 100,
+      "size": [
+        3,
+        3
+      ],
+      "best_size": [
+        [
+          2,
+          2
+        ]
+      ],
+      "preferred_ids": [
+        49104
+      ]
+    }
+  ],
+  "source_catalog": "installed-mod-bundles.v1.json",
+  "missing": []
+}
