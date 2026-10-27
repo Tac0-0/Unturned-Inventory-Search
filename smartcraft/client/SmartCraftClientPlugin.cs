@@ -3,6 +3,7 @@
 // Requires a compatible SmartCraft server. Not part of stable v1.2 releases.
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
 using HarmonyLib;
@@ -22,7 +23,12 @@ namespace SmartCraft.Client
             {
                 _harmony = new Harmony("tac0.smartcraft.client.1.3");
                 _harmony.PatchAll(typeof(SmartCraftClientPlugin).Assembly);
-                Logger.LogInfo("SmartCraft 1.3: bundle-aware vanilla Y crafting status patch loaded.");
+                var statusHook = AccessTools.Method(typeof(PlayerCrafting), "UpdateBlueprintInputItemStatus");
+                var visibilityHook = AccessTools.Method(typeof(PlayerCrafting), "GatherUniqueInputItems");
+                bool statusPatched = Harmony.GetPatchInfo(statusHook) != null;
+                bool visibilityPatched = Harmony.GetPatchInfo(visibilityHook) != null;
+                Logger.LogInfo("SmartCraft v1.3 alpha2: Y-menu visibility patched=" +
+                    visibilityPatched + ", bundle count patched=" + statusPatched);
             }
             catch (Exception ex)
             {
@@ -37,12 +43,45 @@ namespace SmartCraft.Client
         }
     }
 
+    // In the native Y menu the craftable-only filter runs BEFORE the quantity
+    // checks. It builds a HashSet of literal inventory ItemAsset IDs. When the
+    // player carries only 49101/49102 the vanilla Scrap 67 entry is filtered
+    // out entirely, so the quantity postfix is never reached.
+    //
+    // Add virtual base Scrap availability to the temporary UI search set,
+    // not to the inventory or a Blueprint. This keeps the ORIGINAL recipes.
+    [HarmonyPatch(typeof(PlayerCrafting), "GatherUniqueInputItems")]
+    internal static class CraftingMenuVisibilityPatch
+    {
+        private static readonly ItemAsset ScrapAsset =
+            Assets.find(EAssetType.ITEM, (ushort)67) as ItemAsset;
+
+        private static void Postfix(HashSet<ItemAsset> results)
+        {
+            if (results == null) return;
+            ItemAsset baseAsset = ScrapAsset ??
+                Assets.find(EAssetType.ITEM, (ushort)67) as ItemAsset;
+            if (baseAsset == null) return;
+            bool hasBundle = false;
+            foreach (ItemAsset asset in results)
+            {
+                if (asset != null && (asset.id == 49101 || asset.id == 49102))
+                {
+                    hasBundle = true;
+                    break;
+                }
+            }
+            if (hasBundle) results.Add(baseAsset);
+        }
+    }
+
     [HarmonyPatch(typeof(PlayerCrafting), "UpdateBlueprintInputItemStatus")]
     internal static class BlueprintInputQuantityPatch
     {
         private const ushort Scrap = 67;
         private const ushort Scrap10 = 49101;
         private const ushort Scrap100 = 49102;
+        private static bool _didLogFailure;
 
         private static int Count(PlayerInventory inventory, ushort id)
         {
@@ -145,10 +184,15 @@ namespace SmartCraft.Client
                 CriticalMissing.SetValue(status, anyMissingCritical);
                 if (missingAfter == 0) __result = false;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Fail closed: if Unturned's runtime ABI changes, don't invent
-                // craftable inventory quantities or suppress vanilla handling.
+                // Do not swallow first critical error: a user-facing BepInEx log
+                // is essential to diagnose changes in Unturned's client runtime.
+                if (!_didLogFailure)
+                {
+                    _didLogFailure = true;
+                    UnityEngine.Debug.LogError("[SmartCraft] Failed to calculate Y-menu quantities: " + ex);
+                }
             }
         }
     }
