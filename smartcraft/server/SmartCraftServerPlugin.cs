@@ -1,4 +1,4 @@
-// SmartCraft v1.3 experimental SERVER engine. Not deployed to production.
+// SmartCraft v1.4.0 experimental SERVER engine. Not deployed to production.
 // Uses Unturned's own pre-craft event to substitute an in-memory blueprint.
 // No new Workshop assets, client-side recipes, or replacement item IDs.
 using System;
@@ -35,7 +35,7 @@ namespace SmartCraft.Server
                 return;
             }
             PlayerCrafting.OnCraftBlueprintRequestedV2 += RewriteCraft;
-            Logger.Log("[SmartCraft] Original-bundle crafting handler installed (experimental, scrap-only).");
+            Logger.Log("[SmartCraft] Original-bundle crafting handler installed (experimental; scrap-only substitution + recipe cleanup).");
         }
 
         protected override void Unload()
@@ -135,6 +135,14 @@ namespace SmartCraft.Server
             if (blueprint.Operation != EBlueprintOperation.None || blueprint.transferState) return;
             try
             {
+                // Mirror the client-side recipe visibility filter. This
+                // server-side rejection prevents hidden inferior recipes from
+                // being invoked by a crafted/modified network request.
+                if (SmartCraft.Shared.RecipeCleanupPolicy.ShouldSuppressBlueprint(blueprint))
+                {
+                    shouldAllow = false;
+                    return;
+                }
                 BlueprintSupply[] originals = blueprint.supplies;
                 if (originals == null || originals.Length == 0) return;
 
