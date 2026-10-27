@@ -32,7 +32,7 @@ public static class StackPlannerTests
         Expect(10,0,new AvailableStack(48147,10,1));
         Expect(2,8,new AvailableStack(48147,10,1));
         Expect(10,90,new AvailableStack(48177,100,1));
-        Expect(18,2,new AvailableStack(42213,1,8),
+        Expect(18,0,new AvailableStack(42213,1,8),
             new AvailableStack(48147,10,1),new AvailableStack(48177,100,1));
         // Original vanilla crops can also be the base material.
         Expect(5,5,new AvailableStack(48135,10,1));
