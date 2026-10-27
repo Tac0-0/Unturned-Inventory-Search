@@ -19,12 +19,17 @@ namespace SmartCraft.Server
             typeof(Blueprint).GetField("_supplies", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly FieldInfo OutputsField =
             typeof(Blueprint).GetField("_outputs", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo SupplyItemRefField =
+            typeof(BlueprintSupply).GetField("_itemRef", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo OutputItemRefField =
+            typeof(BlueprintOutput).GetField("_itemRef", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly MethodInfo CloneMethod =
             typeof(object).GetMethod("MemberwiseClone", BindingFlags.NonPublic | BindingFlags.Instance);
 
         protected override void Load()
         {
-            if (SuppliesField == null || OutputsField == null || CloneMethod == null)
+            if (SuppliesField == null || OutputsField == null || CloneMethod == null ||
+                SupplyItemRefField == null || OutputItemRefField == null)
             {
                 Logger.LogError("[SmartCraft] Blueprint reflection layout changed; extension is disabled.");
                 return;
@@ -88,6 +93,41 @@ namespace SmartCraft.Server
             return found;
         }
 
+        private static CachingBcAssetRef ResolveItemReference(ushort itemId)
+        {
+            ItemAsset asset = Assets.find(EAssetType.ITEM, itemId) as ItemAsset;
+            if (asset == null || asset.id != itemId)
+                throw new InvalidOperationException("Missing bundle asset ID " + itemId);
+            // More Farming assigns GUIDs to its items. Bind the live asset,
+            // not only its legacy number, so other recipe filters can resolve it.
+            return new CachingBcAssetRef(asset);
+        }
+
+        private static BlueprintSupply CreateBundleSupply(ushort itemId, int count)
+        {
+            if (count < 1) throw new ArgumentOutOfRangeException("count");
+            var supply = new BlueprintSupply(itemId, true, count, true,
+                ECraftingInputPrioritization.LowestAmount);
+            // IMPORTANT: BlueprintSupply(ushort...) does NOT initialize _itemRef.
+            // Without this assignment server-side UpdateBlueprintDynamicStatus
+            // marks the ingredient as missing, rejecting the craft.
+            SupplyItemRefField.SetValue(supply, ResolveItemReference(itemId));
+            if (supply.FindItemAsset() == null || supply.FindItemAsset().id != itemId)
+                throw new InvalidOperationException("Cannot resolve new supply " + itemId);
+            return supply;
+        }
+
+        private static BlueprintOutput CreateRefundOutput(ushort itemId, int count)
+        {
+            if (count < 1) throw new ArgumentOutOfRangeException("count");
+            var output = new BlueprintOutput(itemId, count, EItemOrigin.CRAFT);
+            // BlueprintOutput(ushort...) ALSO leaves _itemRef empty.
+            OutputItemRefField.SetValue(output, ResolveItemReference(itemId));
+            if (output.FindItemAsset() == null || output.FindItemAsset().id != itemId)
+                throw new InvalidOperationException("Cannot resolve refund item " + itemId);
+            return output;
+        }
+
         private static void RewriteCraft(PlayerCrafting crafting, ref Blueprint blueprint, ref bool shouldAllow)
         {
             if (!shouldAllow || crafting == null || blueprint == null) return;
@@ -138,11 +178,9 @@ namespace SmartCraft.Server
                     }
                 }
                 if (tensUsed > 0)
-                    inputs.Add(new BlueprintSupply(Scrap10, true, tensUsed, false,
-                        ECraftingInputPrioritization.LowestAmount));
+                    inputs.Add(CreateBundleSupply(Scrap10, tensUsed));
                 if (hundredsUsed > 0)
-                    inputs.Add(new BlueprintSupply(Scrap100, true, hundredsUsed, false,
-                        ECraftingInputPrioritization.LowestAmount));
+                    inputs.Add(CreateBundleSupply(Scrap100, hundredsUsed));
 
                 int excess = loose + 10 * tensUsed + 100 * hundredsUsed - totalScrapRequired;
                 if (excess < 0) { shouldAllow = false; return; }
@@ -152,15 +190,15 @@ namespace SmartCraft.Server
                 int returnedTens = excess / 10;
                 int returnedLoose = excess % 10;
                 if (returnedTens > 0)
-                    outputs.Add(new BlueprintOutput(Scrap10, returnedTens, EItemOrigin.CRAFT));
+                    outputs.Add(CreateRefundOutput(Scrap10, returnedTens));
                 if (returnedLoose > 0)
-                    outputs.Add(new BlueprintOutput(Scrap, returnedLoose, EItemOrigin.CRAFT));
+                    outputs.Add(CreateRefundOutput(Scrap, returnedLoose));
 
                 var replacement = (Blueprint)CloneMethod.Invoke(blueprint, null);
                 SuppliesField.SetValue(replacement, inputs.ToArray());
                 OutputsField.SetValue(replacement, outputs.ToArray());
                 blueprint = replacement; // Vanilla still validates the recipe and gives output.
-                Logger.Log("[SmartCraft] Server blueprint rewrite: " + totalScrapRequired +
+                Logger.Log("[SmartCraft] Resolved bundled supplies and refund outputs; rewritten recipe requires " + totalScrapRequired +
                     " scrap, consuming " + loose + " loose + " + tensUsed + " x10 + " +
                     hundredsUsed + " x100; returning " + returnedTens + " x10 + " +
                     returnedLoose + " loose.");
