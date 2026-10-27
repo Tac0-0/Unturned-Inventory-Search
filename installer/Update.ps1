@@ -346,6 +346,26 @@ try {
         }
         throw ('Update failed; attempted to restore the previous installation. ' + $originalError.Exception.Message)
     }
+    # After a successful, rollback-safe file transaction, also retire EMPTY
+    # legacy directories. This supports complete future plugin/app layout
+    # revamps without deleting untracked user files or unrelated BepInEx mods.
+    # Never remove either owned root directory (or their ancestors).
+    foreach ($retired in $obsolete) {
+        $ownedRoot = if ($retired.StartsWith(($pluginDir + [IO.Path]::DirectorySeparatorChar),
+                [StringComparison]::OrdinalIgnoreCase)) { $pluginDir } else { $stateDir }
+        $folder = Split-Path -Parent $retired
+        while ($folder -and $folder -ine $ownedRoot) {
+            try {
+                if (-not (Test-Path -LiteralPath $folder -PathType Container)) { break }
+                if (@(Get-ChildItem -LiteralPath $folder -Force).Count -gt 0) { break }
+                Remove-Item -LiteralPath $folder -Force
+                $folder = Split-Path -Parent $folder
+            } catch {
+                Write-Warning ('Could not retire empty legacy directory: ' + $folder)
+                break
+            }
+        }
+    }
     # Do not rewrite byte-identical files, but always reconcile the entire
     # manifest and retire files owned by earlier releases.
     # Keep one previous DLL for manual recovery if an updated plugin fails in-game.

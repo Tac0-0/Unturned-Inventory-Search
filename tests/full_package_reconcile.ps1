@@ -99,6 +99,31 @@ $previous | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $state
 [void](Run-Updater)
 if (Test-Path $owned) { throw 'Updater failed to retire package-owned old command' }
 if (-not (Test-Path $foreign)) { throw 'Updater removed an unrelated file' }
+# Simulate a MAJOR REWRITE that retires entire nested plugin/app layouts,
+# while the new ZIP already installs completely different owned files.
+$legacyApp = Join-Path $state 'legacy\engine\OldSearchModule.dll'
+$legacyPlugin = Join-Path $pluginDir 'obsolete\ui\OldSearchUI.dll'
+foreach ($file in @($legacyApp, $legacyPlugin)) {
+    New-Item -ItemType Directory -Path (Split-Path -Parent $file) -Force | Out-Null
+    Set-Content -LiteralPath $file -Value 'Old package implementation'
+}
+$custom = Join-Path $pluginDir 'obsolete\CUSTOM-DO-NOT-DELETE.txt'
+Set-Content -LiteralPath $custom -Value 'not ours'
+$previous = Get-Content -LiteralPath (Join-Path $state 'installed-manifest.json') -Raw | ConvertFrom-Json
+$previous.files = @($previous.files) + @(
+    [pscustomobject]@{ source='unused/old-a'; target='app/legacy/engine/OldSearchModule.dll'; sha256=('0' * 64) },
+    [pscustomobject]@{ source='unused/old-b'; target='plugin/obsolete/ui/OldSearchUI.dll'; sha256=('0' * 64) }
+)
+$previous | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $state 'installed-manifest.json')
+[void](Run-Updater)
+if (Test-Path -LiteralPath $legacyApp) { throw 'Revamp failed to retire old app implementation' }
+if (Test-Path -LiteralPath $legacyPlugin) { throw 'Revamp failed to retire old plugin implementation' }
+if (Test-Path -LiteralPath (Join-Path $state 'legacy')) { throw 'Empty obsolete app subtree was retained' }
+if (Test-Path -LiteralPath (Join-Path $pluginDir 'obsolete\ui')) { throw 'Empty obsolete plugin subtree was retained' }
+if (-not (Test-Path -LiteralPath $custom)) { throw 'Revamp deleted untracked user content' }
+if (-not (Test-Path -LiteralPath (Join-Path $state 'tools\Prepare-Release.ps1'))) {
+    throw 'Revamp failed to install new nested app directory'
+}
 # Same-version, genuinely complete package is not copied over again.
 $output = Run-Updater
 if ($output -notmatch 'already up to date') { throw 'Fully matching package was not recognized' }
@@ -111,4 +136,4 @@ $entry = @($manifest.files | Where-Object { $_.target -eq 'app/CRAFTING-ADDON.cm
 if ((Get-FileHash -LiteralPath $managed -Algorithm SHA256).Hash -ne $entry.sha256.ToUpperInvariant()) {
     throw 'Current command not repaired'
 }
-Write-Host 'PASS: complete package installs new CMDs, retires owned files, protects unrelated files, repairs same-version damage, and skips verified packages.'
+Write-Host 'PASS: complete package installs new CMDs, retires owned files, protects unrelated files, handles entire nested-folder revamps, repairs same-version damage, and skips verified packages.'
